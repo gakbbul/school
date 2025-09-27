@@ -34,8 +34,9 @@
         let schoolInfo = {
             name: '',
             code: '',
-            regionCode: '',
-            regionName: '',
+            regionCode: '', // ATPT_OFCDC_SC_CODE (교육청 코드)
+            regionName: '', // LCTN_SC_NM (광역 지역명, 예: 서울특별시)
+            cityDistrictName: '', // SIGUN_NM (시군구명, 예: 강북구) - 날씨 정확도 향상용
             grade: '',
             class: '',
         };
@@ -58,26 +59,30 @@
         const mainViewContainer = document.getElementById('main-view');
         const settingsViewContainer = document.getElementById('settings-view');
 
-        // WMO 날씨 코드를 한글로 변환
+        /**
+         * WMO 날씨 코드를 사용자 요청에 따라 '비', '눈' 등 직접적인 영향을 주는 날씨만 한글로 변환합니다.
+         * 맑음, 흐림, 안개 등은 빈 문자열을 반환합니다.
+         */
         const getWeatherDescription = (code) => {
-            switch (code) {
-                case 0: return '맑음';
-                case 1: return '주로 맑음';
-                case 2: return '부분적으로 흐림';
-                case 3: return '흐림';
-                case 45: case 48: return '안개';
-                case 51: case 53: case 55: return '이슬비';
-                case 56: case 57: return '어는 이슬비';
-                case 61: case 63: case 65: return '비';
-                case 66: case 67: return '어는 비';
-                case 71: case 73: case 75: return '눈';
-                case 77: return '눈송이';
-                case 80: case 81: case 82: return '소나기';
-                case 85: case 86: return '눈 소나기';
-                case 95: return '천둥 번개';
-                case 96: case 99: return '우박을 동반한 천둥 번개';
-                default: return '정보 없음';
+            // 맑음, 주로 맑음, 부분적으로 흐림, 흐림, 안개, 이슬비(약한 영향) 등은 표시하지 않음 (빈 문자열 반환)
+            if ([0, 1, 2, 3, 45, 48, 51, 53, 55].includes(code)) {
+                return ''; 
             }
+            
+            // 직접적인 영향을 주는 날씨 (비, 눈, 소나기, 천둥번개 등)만 표시
+            if ([56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
+                return '비'; // 어는 이슬비, 비, 소나기 등 모두 '비'로 통일
+            }
+            
+            if ([71, 73, 75, 77, 85, 86].includes(code)) {
+                return '눈'; // 눈, 눈 소나기 등 모두 '눈'으로 통일
+            }
+            
+            if ([95, 96, 99].includes(code)) {
+                return '천둥 번개'; 
+            }
+
+            return ''; // 기타 또는 정보 없음
         };
         
         // 주요 음력 공휴일 및 대체 공휴일 (양력 기준)
@@ -146,22 +151,27 @@
             try {
                 // 날씨 데이터 (Open-Meteo)
                  let forecastForSelectedDay = null;
-                 const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${schoolInfo.regionName}&count=1&language=ko&format=json`);
-                 const geoData = await geoResponse.json();
-                 if (geoData.results && geoData.results.length > 0) {
-                     const { latitude, longitude } = geoData.results[0];
-                     const weatherResponse = await fetch(`${WEATHER_API_URL_FORECAST}?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7`);
-                     const weatherData = await weatherResponse.json();
-                     if (weatherData.daily) {
-                         const selectedDateStr = formatDate(date);
-                         const dateIndex = weatherData.daily.time.findIndex(time => time.startsWith(selectedDateStr));
-                         if (dateIndex !== -1) {
-                             forecastForSelectedDay = {
-                                 temp_min: weatherData.daily.temperature_2m_min[dateIndex],
-                                 temp_max: weatherData.daily.temperature_2m_max[dateIndex],
-                                 weather_code: weatherData.daily.weather_code[dateIndex],
-                                 precipitation_probability: weatherData.daily.precipitation_probability_max[dateIndex]
-                             };
+                 
+                 // 학교의 시군구명(cityDistrictName)을 사용하여 날씨 검색 (정확도 향상)
+                 const locationForWeather = schoolInfo.cityDistrictName || schoolInfo.regionName; // 시군구명이 없으면 광역 지역명으로 대체
+                 if (locationForWeather) {
+                     const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${locationForWeather}&count=1&language=ko&format=json`);
+                     const geoData = await geoResponse.json();
+                     if (geoData.results && geoData.results.length > 0) {
+                         const { latitude, longitude } = geoData.results[0];
+                         const weatherResponse = await fetch(`${WEATHER_API_URL_FORECAST}?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7`);
+                         const weatherData = await weatherResponse.json();
+                         if (weatherData.daily) {
+                             const selectedDateStr = formatDate(date);
+                             const dateIndex = weatherData.daily.time.findIndex(time => time.startsWith(selectedDateStr));
+                             if (dateIndex !== -1) {
+                                 forecastForSelectedDay = {
+                                     temp_min: weatherData.daily.temperature_2m_min[dateIndex],
+                                     temp_max: weatherData.daily.temperature_2m_max[dateIndex],
+                                     weather_code: weatherData.daily.weather_code[dateIndex],
+                                     precipitation_probability: weatherData.daily.precipitation_probability_max[dateIndex]
+                                 };
+                             }
                          }
                      }
                  }
@@ -204,8 +214,6 @@
         const getSemester = d => (d.getMonth() + 1 >= 3 && d.getMonth() + 1 <= 7) ? '1' : '2';
         const getDayName = d => ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
         const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
-        const isRain = code => [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code);
-        const isSnow = code => [71, 73, 75, 85, 86].includes(code);
 
         // 이벤트 핸들러
         const handleDateChange = (days) => {
@@ -218,18 +226,29 @@
             if (schoolInfo.code && schoolInfo.regionCode) fetchData();
             else render();
         };
+        
         const handleSchoolSearch = async () => {
             if (!searchQuery) return;
             try {
                 const response = await fetch(`${NEIS_API_URL}schoolInfo?key=${NEIS_API_KEY}&type=json&pSize=100&SCHUL_NM=${searchQuery}`);
                 const data = await response.json();
-                searchResults = data.schoolInfo?.[1]?.row || [];
+                
+                // 필요한 정보만 추출하고, 시군구명(SIGUN_NM)을 포함하여 정확도 향상
+                searchResults = (data.schoolInfo?.[1]?.row || []).map(school => ({
+                    SCHUL_NM: school.SCHUL_NM,
+                    SD_SCHUL_CODE: school.SD_SCHUL_CODE,
+                    ATPT_OFCDC_SC_CODE: school.ATPT_OFCDC_SC_CODE,
+                    LCTN_SC_NM: school.LCTN_SC_NM, 
+                    SIGUN_NM: school.SIGUN_NM || school.LCTN_SC_NM // 시군구명이 없으면 광역 지역명으로 대체
+                }));
+
             } catch (error) {
                 console.error("학교 검색 중 오류 발생:", error);
                 searchResults = [];
             }
             render();
         };
+
         const saveSettings = () => {
             localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
             localStorage.setItem('customTimetable', JSON.stringify(customTimetable));
@@ -239,7 +258,23 @@
         };
         
         const getCombinedText = () => {
-            const dateText = `날씨: ${weather ? `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°` : '정보 없음'}`;
+            // 날짜 (월.일) 형식을 추가
+            const formattedDate = `${date.getMonth() + 1}.${date.getDate()}`;
+            
+            let weatherSummary = '정보 없음';
+            if (weather && weather.weather_code !== undefined) {
+                const weatherText = getWeatherDescription(weather.weather_code);
+                const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
+                if (weatherText) {
+                    // 비/눈/천둥번개 등 표시
+                    weatherSummary = `${tempDisplay} ${weatherText}${weather.precipitation_probability > 0 ? ` (${weather.precipitation_probability}%)` : ''}`;
+                } else {
+                    // 맑음/흐림 등 (온도만 표시)
+                    weatherSummary = tempDisplay;
+                }
+            }
+            
+            const dateText = `${formattedDate} 날씨: ${weatherSummary}`;
             const mealText = `급식메뉴: ${meal && meal.length > 0 ? meal[0].DDISH_NM.split('<br/>').map(item => item.replace(/\((.*?)\)/g, '').trim()).join(', ') : '정보 없음'}`;
             const timetableText = `시간표: ${timetable && timetable.length > 0 ? timetable.filter(item => item.ITRT_CNTNT).map(item => item.ITRT_CNTNT).join(' ') : '정보 없음'}`;
             return `${dateText}\n\n${mealText}\n\n${timetableText}`;
@@ -339,6 +374,7 @@
                     }
                     if (isRegularWorkingDay && hasData) {
                         content += `
+                            <!-- 종합 정보 박스 (복사/공유용) -->
                             <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                 <h2 class="text-lg font-semibold mb-2">${schoolInfo.grade}학년 ${schoolInfo.class}반</h2>
                                 <div class="whitespace-pre-line text-base mb-4">${getCombinedText()}</div>
@@ -349,7 +385,7 @@
                             </div>`;
                     }
 
-                    // 날씨 카드
+                    // 1. 날씨 카드 (Full Width)
                     const today = new Date();
                     today.setHours(0, 0, 0, 0); // 시간 정보를 제거하여 날짜만 비교
                     let weatherContent;
@@ -357,14 +393,31 @@
                     if (date < today) {
                         weatherContent = `<p class="text-gray-500 dark:text-gray-400">과거 날씨 정보는 제공하지 않습니다.</p>`;
                     } else if (weather && weather.weather_code !== undefined) {
-                        weatherContent = `
-                            <div class="flex items-center space-x-4">
-                                <p class="text-xl font-bold">
-                                    ${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°
-                                    ${isRain(weather.weather_code) && weather.precipitation_probability > 0 ? `<span class="ml-2 text-sm text-gray-600 dark:text-gray-300">(비, ${weather.precipitation_probability}%)</span>` : ''}
-                                    ${isSnow(weather.weather_code) ? `<span class="ml-2 text-sm text-gray-600 dark:text-gray-300">(눈)</span>` : ''}
-                                </p>
-                            </div>`;
+                        const weatherText = getWeatherDescription(weather.weather_code); // '비', '눈', '천둥 번개' 또는 ''
+                        const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
+                        const locationDisplay = schoolInfo.cityDistrictName ? ` (${schoolInfo.cityDistrictName})` : '';
+
+                        // 날씨 텍스트가 있으면 (비/눈/천둥번개)
+                        if (weatherText) {
+                            weatherContent = `
+                                <div class="flex items-center space-x-4">
+                                    <p class="text-xl font-bold">
+                                        ${tempDisplay}
+                                        <span class="ml-2 text-base text-gray-700 dark:text-gray-200">${weatherText}</span>
+                                        ${weather.precipitation_probability > 0 ? `<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">(${weather.precipitation_probability}%)</span>` : ''}
+                                        <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span>
+                                    </p>
+                                </div>`;
+                        } else {
+                            // 맑음/흐림 등 (온도만 표시)
+                            weatherContent = `
+                                <div class="flex items-center space-x-4">
+                                    <p class="text-xl font-bold">${tempDisplay}
+                                        <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span>
+                                    </p>
+                                </div>`;
+                        }
+
                     } else {
                         weatherContent = `<p class="text-gray-500 dark:text-gray-400">날씨 정보를 불러올 수 없습니다. (7일치 예보만 제공)</p>`;
                     }
@@ -374,32 +427,52 @@
                         ${weatherContent}
                     </div>`;
 
-                    // 시간표 카드
-                    if (isRegularWorkingDay && timetable && timetable.length > 0) {
-                        content += `
-                            <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
-                                <h2 class="text-lg font-semibold mb-2">시간표</h2>
-                                <ul class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    ${timetable.filter(item => item.ITRT_CNTNT).map(item => `
-                                        <li class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-center text-sm">
-                                            <span class="font-bold">${item.PERIO}교시:</span> ${item.ITRT_CNTNT}
-                                        </li>
-                                    `).join('')}
-                                </ul>
-                            </div>`;
-                    }
-                    
-                    // 급식 카드
-                    if (isRegularWorkingDay && meal && meal.length > 0) {
-                        content += `
-                            <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
-                                <h2 class="text-lg font-semibold mb-2">급식표</h2>
-                                <ul>
-                                    ${meal[0].DDISH_NM.split('<br/>').map(item => `
-                                        <li class="py-1 text-gray-700 dark:text-gray-200">${item.replace(/\((.*?)\)/g, '').trim()}</li>
-                                    `).join('')}
-                                </ul>
-                            </div>`;
+                    // 2. 시간표 & 급식표 카드 (Side-by-Side 컨테이너)
+                    if (isRegularWorkingDay) {
+                        const timetableExists = timetable && timetable.length > 0;
+                        const mealExists = meal && meal.length > 0;
+
+                        if (timetableExists || mealExists) {
+                            content += `
+                                <!-- 시간표/급식표 Side-by-Side 컨테이너 -->
+                                <div class="w-full max-w-lg flex flex-wrap gap-4 mb-4">
+                            `;
+
+                            // 두 카드 모두 존재하면 절반씩 차지 (50% - gap/2)
+                            // 하나만 존재하면 전체 너비 차지
+                            const cardWidthClass = (timetableExists && mealExists) ? 'w-full md:w-[calc(50%-0.5rem)]' : 'w-full';
+
+                            // 2-1. 시간표 카드
+                            if (timetableExists) {
+                                content += `
+                                    <div class="${cardWidthClass} p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
+                                        <h2 class="text-lg font-semibold mb-2">시간표</h2>
+                                        <!-- 각 교시를 한 줄에 하나씩 표시 -->
+                                        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+                                            ${timetable.filter(item => item.ITRT_CNTNT).map(item => `
+                                                <li class="py-1 text-gray-700 dark:text-gray-200">
+                                                    <span class="font-bold">${item.PERIO}교시:</span> ${item.ITRT_CNTNT}
+                                                </li>
+                                            `).join('')}
+                                        </ul>
+                                    </div>`;
+                            }
+                            
+                            // 2-2. 급식 카드
+                            if (mealExists) {
+                                content += `
+                                    <div class="${cardWidthClass} p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
+                                        <h2 class="text-lg font-semibold mb-2">급식표</h2>
+                                        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+                                            ${meal[0].DDISH_NM.split('<br/>').map(item => `
+                                                <li class="py-1 text-gray-700 dark:text-gray-200">${item.replace(/\((.*?)\)/g, '').trim()}</li>
+                                            `).join('')}
+                                        </ul>
+                                    </div>`;
+                            }
+
+                            content += `</div>`; // Close Side-by-Side container
+                        }
                     }
                 }
             } else {
@@ -432,7 +505,7 @@
                                     </div>
                                     <ul id="search-results-list" class="mt-2 max-h-40 overflow-y-auto rounded-2xl border border-gray-300 dark:border-gray-600">
                                         ${searchResults.map(school => `
-                                            <li data-name="${school.SCHUL_NM}" data-code="${school.SD_SCHUL_CODE}" data-region-code="${school.ATPT_OFCDC_SC_CODE}" data-region-name="${school.LCTN_SC_NM}" class="p-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200">${school.SCHUL_NM}</li>
+                                            <li data-name="${school.SCHUL_NM}" data-code="${school.SD_SCHUL_CODE}" data-region-code="${school.ATPT_OFCDC_SC_CODE}" data-region-name="${school.LCTN_SC_NM}" data-city-district-name="${school.SIGUN_NM}" class="p-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200">${school.SCHUL_NM} (${school.SIGUN_NM || school.LCTN_SC_NM})</li>
                                         `).join('')}
                                     </ul>
                                 </div>
@@ -504,7 +577,15 @@
                 document.getElementById('school-search-btn').addEventListener('click', handleSchoolSearch);
                 document.getElementById('search-results-list').addEventListener('click', (e) => {
                     if (e.target.tagName === 'LI') {
-                        schoolInfo = { ...schoolInfo, name: e.target.dataset.name, code: e.target.dataset.code, regionCode: e.target.dataset.regionCode, regionName: e.target.dataset.regionName };
+                        // 날씨 정확도 향상을 위해 cityDistrictName (시군구명)을 추가로 저장
+                        schoolInfo = {
+                            ...schoolInfo,
+                            name: e.target.dataset.name,
+                            code: e.target.dataset.code,
+                            regionCode: e.target.dataset.regionCode,
+                            regionName: e.target.dataset.regionName, // 광역 지역명 (NEIS API용)
+                            cityDistrictName: e.target.dataset.cityDistrictName, // 시군구명 (날씨 API용)
+                        };
                         searchResults = [];
                         render();
                     }
@@ -549,4 +630,3 @@
     </script>
 </body>
 </html>
-
