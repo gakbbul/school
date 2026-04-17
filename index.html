@@ -4,14 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>시간표 급식표 조회</title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts (Noto Sans KR) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100..900&display=swap" rel="stylesheet">
     <style>
-        /* Noto Sans KR 폰트 적용 */
         body {
             font-family: 'Noto Sans KR', sans-serif;
         }
@@ -19,29 +16,23 @@
 </head>
 <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-white transition-colors duration-300">
 
-    <!-- 메인 화면 -->
-    <div id="main-view">
-        <!-- 이 부분은 JavaScript를 통해 동적으로 채워집니다. -->
-    </div>
-
-    <!-- 설정 화면 -->
-    <div id="settings-view" class="hidden">
-        <!-- 이 부분은 JavaScript를 통해 동적으로 채워집니다. -->
-    </div>
+    <div id="main-view"></div>
+    <div id="settings-view" class="hidden"></div>
 
     <script>
-        // 전역 상태 변수
         let schoolInfo = {
             name: '',
             code: '',
-            regionCode: '', // ATPT_OFCDC_SC_CODE (교육청 코드)
-            regionName: '', // LCTN_SC_NM (광역 지역명, 예: 서울특별시)
-            cityDistrictName: '', // SIGUN_NM (시군구명, 예: 강북구) - 날씨 정확도 향상용
+            regionCode: '',
+            regionName: '',
+            cityDistrictName: '',
             grade: '',
             class: '',
+            schoolType: '',
         };
-        let view = 'main'; // 'main' 또는 'settings'
+        let view = 'main';
         let customTimetable = {};
+        let dailyNotes = {};
         let date = new Date();
         let weather = null;
         let meal = null;
@@ -50,42 +41,21 @@
         let searchQuery = '';
         let searchResults = [];
 
-        // API 키 및 URL
         const NEIS_API_KEY = "2ab5d56a9a7a4baeba5b12519dd6369b";
         const NEIS_API_URL = "https://open.neis.go.kr/hub/";
         const WEATHER_API_URL_FORECAST = "https://api.open-meteo.com/v1/forecast";
-        
-        // DOM 요소
+
         const mainViewContainer = document.getElementById('main-view');
         const settingsViewContainer = document.getElementById('settings-view');
 
-        /**
-         * WMO 날씨 코드를 사용자 요청에 따라 '비', '눈' 등 직접적인 영향을 주는 날씨만 한글로 변환합니다.
-         * 맑음, 흐림, 안개 등은 빈 문자열을 반환합니다.
-         */
         const getWeatherDescription = (code) => {
-            // 맑음, 주로 맑음, 부분적으로 흐림, 흐림, 안개, 이슬비(약한 영향) 등은 표시하지 않음 (빈 문자열 반환)
-            if ([0, 1, 2, 3, 45, 48, 51, 53, 55].includes(code)) {
-                return ''; 
-            }
-            
-            // 직접적인 영향을 주는 날씨 (비, 눈, 소나기, 천둥번개 등)만 표시
-            if ([56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
-                return '비'; // 어는 이슬비, 비, 소나기 등 모두 '비'로 통일
-            }
-            
-            if ([71, 73, 75, 77, 85, 86].includes(code)) {
-                return '눈'; // 눈, 눈 소나기 등 모두 '눈'으로 통일
-            }
-            
-            if ([95, 96, 99].includes(code)) {
-                return '천둥 번개'; 
-            }
-
-            return ''; // 기타 또는 정보 없음
+            if ([0, 1, 2, 3, 45, 48, 51, 53, 55].includes(code)) return '';
+            if ([56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '비';
+            if ([71, 73, 75, 77, 85, 86].includes(code)) return '눈';
+            if ([95, 96, 99].includes(code)) return '천둥 번개';
+            return '';
         };
-        
-        // 주요 음력 공휴일 및 대체 공휴일 (양력 기준)
+
         const getLunarHolidaysForYear = (year) => {
             const lunarHolidaysMap = {
                 2024: [
@@ -117,14 +87,13 @@
             return lunarHolidaysMap[year] || [];
         };
 
-        // 법정 공휴일 확인
         const isPublicHoliday = (d) => {
             const year = d.getFullYear();
             const month = d.getMonth() + 1;
             const day = d.getDate();
             const fixedHolidays = [
                 { month: 1, day: 1, name: "신정" }, { month: 3, day: 1, name: "삼일절" },
-                { month: 5, day: 5, name: "어린이날" }, { month: 5, day: 6, name: "대체 공휴일 (어린이날)" }, // 2024년 기준
+                { month: 5, day: 5, name: "어린이날" }, { month: 5, day: 6, name: "대체 공휴일 (어린이날)" },
                 { month: 6, day: 6, name: "현충일" }, { month: 8, day: 15, name: "광복절" },
                 { month: 10, day: 3, name: "개천절" }, { month: 10, day: 9, name: "한글날" },
                 { month: 12, day: 25, name: "성탄절" },
@@ -137,54 +106,106 @@
             return false;
         };
 
-        // API 데이터 가져오기
+        const formatDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const formatDateForNeis = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+        const getSemester = d => (d.getMonth() + 1 >= 3 && d.getMonth() + 1 <= 7) ? '1' : '2';
+        const getDayName = d => ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+        const getFullDayName = d => ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][d.getDay()];
+        const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
+
+        const getSchoolTypeLabel = (schoolType) => {
+            if (!schoolType) return '학교';
+            if (schoolType.includes('초')) return '초등학교';
+            if (schoolType.includes('중')) return '중학교';
+            if (schoolType.includes('고')) return '고등학교';
+            return schoolType;
+        };
+
+        const getGradeOptions = (schoolType) => {
+            if (schoolType && schoolType.includes('초')) return [1, 2, 3, 4, 5, 6];
+            return [1, 2, 3];
+        };
+
+        const getTimetableEndpoint = (schoolType) => {
+            if (schoolType && schoolType.includes('중')) return 'misTimetable';
+            if (schoolType && schoolType.includes('고')) return 'hisTimetable';
+            return 'elsTimetable';
+        };
+
+        const getFormattedDateWithDay = (d) => `${d.getMonth() + 1}.${d.getDate()}(${getDayName(d)})`;
+        const getCurrentDateKey = () => formatDate(date);
+        const getNoteForDate = (dateKey = getCurrentDateKey()) => dailyNotes[dateKey] || '';
+
+        const saveDailyNotes = () => {
+            localStorage.setItem('dailyNotes', JSON.stringify(dailyNotes));
+        };
+
+        const getStartOfWeek = (baseDate) => {
+            const start = new Date(baseDate);
+            const day = start.getDay();
+            start.setHours(0, 0, 0, 0);
+            start.setDate(start.getDate() - day + 1);
+            return start;
+        };
+
+        const getWeekDates = (baseDate) => {
+            const start = getStartOfWeek(baseDate);
+            return Array.from({ length: 7 }, (_, index) => {
+                const current = new Date(start);
+                current.setDate(start.getDate() + index);
+                return current;
+            });
+        };
+
+        const formatWeekRange = (baseDate) => {
+            const weekDates = getWeekDates(baseDate);
+            const start = weekDates[0];
+            const end = weekDates[6];
+            if (start.getMonth() === end.getMonth()) {
+                return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getDate()}일`;
+            }
+            return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getMonth() + 1}월 ${end.getDate()}일`;
+        };
+
         const fetchData = async () => {
             isLoading = true;
-            render(); 
+            weather = null;
+            meal = null;
+            timetable = null;
+            render();
 
-            if (isPublicHoliday(date) || isWeekend(date)) {
-                weather = null;
-                meal = null;
-                timetable = null;
-            }
-            
             try {
-                // 날씨 데이터 (Open-Meteo)
-                 let forecastForSelectedDay = null;
-                 
-                 // 학교의 시군구명(cityDistrictName)을 사용하여 날씨 검색 (정확도 향상)
-                 const locationForWeather = schoolInfo.cityDistrictName || schoolInfo.regionName; // 시군구명이 없으면 광역 지역명으로 대체
-                 if (locationForWeather) {
-                     const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${locationForWeather}&count=1&language=ko&format=json`);
-                     const geoData = await geoResponse.json();
-                     if (geoData.results && geoData.results.length > 0) {
-                         const { latitude, longitude } = geoData.results[0];
-                         const weatherResponse = await fetch(`${WEATHER_API_URL_FORECAST}?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7`);
-                         const weatherData = await weatherResponse.json();
-                         if (weatherData.daily) {
-                             const selectedDateStr = formatDate(date);
-                             const dateIndex = weatherData.daily.time.findIndex(time => time.startsWith(selectedDateStr));
-                             if (dateIndex !== -1) {
-                                 forecastForSelectedDay = {
-                                     temp_min: weatherData.daily.temperature_2m_min[dateIndex],
-                                     temp_max: weatherData.daily.temperature_2m_max[dateIndex],
-                                     weather_code: weatherData.daily.weather_code[dateIndex],
-                                     precipitation_probability: weatherData.daily.precipitation_probability_max[dateIndex]
-                                 };
-                             }
-                         }
-                     }
-                 }
+                let forecastForSelectedDay = null;
+                const locationForWeather = schoolInfo.cityDistrictName || schoolInfo.regionName;
+                if (locationForWeather) {
+                    const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${locationForWeather}&count=1&language=ko&format=json`);
+                    const geoData = await geoResponse.json();
+                    if (geoData.results && geoData.results.length > 0) {
+                        const { latitude, longitude } = geoData.results[0];
+                        const weatherResponse = await fetch(`${WEATHER_API_URL_FORECAST}?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7`);
+                        const weatherData = await weatherResponse.json();
+                        if (weatherData.daily) {
+                            const selectedDateStr = formatDate(date);
+                            const dateIndex = weatherData.daily.time.findIndex(time => time.startsWith(selectedDateStr));
+                            if (dateIndex !== -1) {
+                                forecastForSelectedDay = {
+                                    temp_min: weatherData.daily.temperature_2m_min[dateIndex],
+                                    temp_max: weatherData.daily.temperature_2m_max[dateIndex],
+                                    weather_code: weatherData.daily.weather_code[dateIndex],
+                                    precipitation_probability: weatherData.daily.precipitation_probability_max[dateIndex]
+                                };
+                            }
+                        }
+                    }
+                }
                 weather = forecastForSelectedDay;
 
                 if (!isPublicHoliday(date) && !isWeekend(date)) {
-                    // 급식 데이터 (나이스 API)
                     const neisFormattedDate = formatDateForNeis(date);
                     const mealResponse = await fetch(`${NEIS_API_URL}mealServiceDietInfo?key=${NEIS_API_KEY}&type=json&pSize=100&ATPT_OFCDC_SC_CODE=${schoolInfo.regionCode}&SD_SCHUL_CODE=${schoolInfo.code}&MLSV_YMD=${neisFormattedDate}`);
                     const mealData = await mealResponse.json();
                     meal = mealData.mealServiceDietInfo?.[1]?.row || null;
 
-                    // 시간표 데이터
                     const dayOfWeek = getDayName(date);
                     if (customTimetable[dayOfWeek] && customTimetable[dayOfWeek].some(item => item)) {
                         timetable = customTimetable[dayOfWeek].map((subject, index) => ({
@@ -192,14 +213,15 @@
                             ITRT_CNTNT: subject
                         }));
                     } else {
-                        const timetableResponse = await fetch(`${NEIS_API_URL}elsTimetable?key=${NEIS_API_KEY}&type=json&pSize=100&ATPT_OFCDC_SC_CODE=${schoolInfo.regionCode}&SD_SCHUL_CODE=${schoolInfo.code}&AY=${date.getFullYear()}&SEM=${getSemester(date)}&ALL_TI_YMD=${neisFormattedDate}&GRADE=${schoolInfo.grade}&CLASS_NM=${schoolInfo.class}`);
+                        const timetableEndpoint = getTimetableEndpoint(schoolInfo.schoolType);
+                        const timetableResponse = await fetch(`${NEIS_API_URL}${timetableEndpoint}?key=${NEIS_API_KEY}&type=json&pSize=100&ATPT_OFCDC_SC_CODE=${schoolInfo.regionCode}&SD_SCHUL_CODE=${schoolInfo.code}&AY=${date.getFullYear()}&SEM=${getSemester(date)}&ALL_TI_YMD=${neisFormattedDate}&GRADE=${schoolInfo.grade}&CLASS_NM=${schoolInfo.class}`);
                         const timetableData = await timetableResponse.json();
-                        timetable = timetableData.elsTimetable?.[1]?.row || null;
+                        timetable = timetableData[timetableEndpoint]?.[1]?.row || null;
                     }
                 }
-
             } catch (error) {
-                console.error("API 데이터 로딩 중 오류 발생:", error);
+                console.error('API 데이터 로딩 중 오류 발생:', error);
+                weather = null;
                 meal = null;
                 timetable = null;
             } finally {
@@ -208,42 +230,64 @@
             }
         };
 
-        // 헬퍼 함수
-        const formatDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const formatDateForNeis = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-        const getSemester = d => (d.getMonth() + 1 >= 3 && d.getMonth() + 1 <= 7) ? '1' : '2';
-        const getDayName = d => ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
-        const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
-
-        // 이벤트 핸들러
         const handleDateChange = (days) => {
             date.setDate(date.getDate() + days);
             if (schoolInfo.code && schoolInfo.regionCode) fetchData();
             else render();
         };
+
         const goToToday = () => {
             date = new Date();
             if (schoolInfo.code && schoolInfo.regionCode) fetchData();
             else render();
         };
-        
+
+        const handleWeekChange = (weeks) => {
+            date.setDate(date.getDate() + (weeks * 7));
+            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
+            else render();
+        };
+
+        const handleWeekDateSelect = (dateString) => {
+            const [year, month, day] = dateString.split('-').map(Number);
+            date = new Date(year, month - 1, day);
+            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
+            else render();
+        };
+
+        const handleSaveNote = () => {
+            const textarea = document.getElementById('daily-note-textarea');
+            if (!textarea) return;
+            const value = textarea.value.trim();
+            const dateKey = getCurrentDateKey();
+            if (value) dailyNotes[dateKey] = value;
+            else delete dailyNotes[dateKey];
+            saveDailyNotes();
+            render();
+        };
+
+        const handleDeleteNote = () => {
+            const dateKey = getCurrentDateKey();
+            delete dailyNotes[dateKey];
+            saveDailyNotes();
+            render();
+        };
+
         const handleSchoolSearch = async () => {
             if (!searchQuery) return;
             try {
                 const response = await fetch(`${NEIS_API_URL}schoolInfo?key=${NEIS_API_KEY}&type=json&pSize=100&SCHUL_NM=${searchQuery}`);
                 const data = await response.json();
-                
-                // 필요한 정보만 추출하고, 시군구명(SIGUN_NM)을 포함하여 정확도 향상
                 searchResults = (data.schoolInfo?.[1]?.row || []).map(school => ({
                     SCHUL_NM: school.SCHUL_NM,
                     SD_SCHUL_CODE: school.SD_SCHUL_CODE,
                     ATPT_OFCDC_SC_CODE: school.ATPT_OFCDC_SC_CODE,
-                    LCTN_SC_NM: school.LCTN_SC_NM, 
-                    SIGUN_NM: school.SIGUN_NM || school.LCTN_SC_NM // 시군구명이 없으면 광역 지역명으로 대체
+                    LCTN_SC_NM: school.LCTN_SC_NM,
+                    SIGUN_NM: school.SIGUN_NM || school.LCTN_SC_NM,
+                    SCHUL_KND_SC_NM: school.SCHUL_KND_SC_NM || ''
                 }));
-
             } catch (error) {
-                console.error("학교 검색 중 오류 발생:", error);
+                console.error('학교 검색 중 오류 발생:', error);
                 searchResults = [];
             }
             render();
@@ -256,40 +300,47 @@
             if (schoolInfo.code && schoolInfo.regionCode) fetchData();
             else render();
         };
-        
+
         const getCombinedText = () => {
-            // 날짜 (월.일) 형식을 추가
-            const formattedDate = `${date.getMonth() + 1}.${date.getDate()}`;
-            
+            const formattedDate = getFormattedDateWithDay(date);
+            const currentNote = getNoteForDate();
+
             let weatherSummary = '정보 없음';
             if (weather && weather.weather_code !== undefined) {
                 const weatherText = getWeatherDescription(weather.weather_code);
                 const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
                 if (weatherText) {
-                    // 비/눈/천둥번개 등 표시
                     weatherSummary = `${tempDisplay} ${weatherText}${weather.precipitation_probability > 0 ? ` (${weather.precipitation_probability}%)` : ''}`;
                 } else {
-                    // 맑음/흐림 등 (온도만 표시)
                     weatherSummary = tempDisplay;
                 }
             }
-            
+
             const dateText = `${formattedDate} 날씨: ${weatherSummary}`;
             const mealText = `급식메뉴: ${meal && meal.length > 0 ? meal[0].DDISH_NM.split('<br/>').map(item => item.replace(/\((.*?)\)/g, '').trim()).join(', ') : '정보 없음'}`;
             const timetableText = `시간표: ${timetable && timetable.length > 0 ? timetable.filter(item => item.ITRT_CNTNT).map(item => item.ITRT_CNTNT).join(' ') : '정보 없음'}`;
-            return `${dateText}\n\n${mealText}\n\n${timetableText}`;
+            const noteText = currentNote ? `\n\n${currentNote}` : '';
+            return `${dateText}\n\n${mealText}\n\n${timetableText}${noteText}`;
         };
-        
-        const handleCopy = () => {
+
+        const handleCopy = async () => {
             const combinedText = getCombinedText();
-            const tempElement = document.createElement('textarea');
-            tempElement.value = combinedText;
-            document.body.appendChild(tempElement);
-            tempElement.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempElement);
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(combinedText);
+                } else {
+                    const tempElement = document.createElement('textarea');
+                    tempElement.value = combinedText;
+                    document.body.appendChild(tempElement);
+                    tempElement.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(tempElement);
+                }
+            } catch (error) {
+                console.error('복사 실패:', error);
+            }
         };
-        
+
         const handleShare = () => {
             if (navigator.share) {
                 navigator.share({
@@ -301,7 +352,6 @@
             }
         };
 
-        // UI 렌더링 함수
         const render = () => {
             if (view === 'main') {
                 mainViewContainer.classList.remove('hidden');
@@ -314,8 +364,7 @@
             }
             addEventListeners();
         };
-        
-        // 메인 화면 렌더링
+
         const renderMainView = () => {
             const isSchoolSet = schoolInfo.code && schoolInfo.regionCode;
             const todayIsWeekend = isWeekend(date);
@@ -323,6 +372,9 @@
             const isHoliday = !!holidayName;
             const isRegularWorkingDay = !todayIsWeekend && !isHoliday;
             const hasData = isRegularWorkingDay && (meal || timetable);
+            const weekDates = getWeekDates(date);
+            const currentDateKey = getCurrentDateKey();
+            const currentNote = getNoteForDate();
 
             let content = `
                 <div class="min-h-screen p-4 flex flex-col items-center">
@@ -332,20 +384,19 @@
                             <button id="settings-btn" class="text-2xl text-current focus:outline-none" aria-label="설정">&#9881;</button>
                         </div>
                         <p class="text-sm text-gray-600 dark:text-gray-300">
-                            ${schoolInfo.name ? `${schoolInfo.name} ${schoolInfo.grade}학년 ${schoolInfo.class}반` : '학교를 선택하세요'}
+                            ${schoolInfo.name ? `${schoolInfo.name} (${getSchoolTypeLabel(schoolInfo.schoolType)}) ${schoolInfo.grade}학년 ${schoolInfo.class}반` : '학교를 선택하세요'}
                         </p>
                     </header>
             `;
 
             if (isSchoolSet) {
                 content += `
-                    <!-- 날짜 네비게이션 -->
                     <div class="w-full max-w-lg flex justify-between items-center p-4 mb-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                         <button id="prev-date-btn" class="text-lg text-gray-600 dark:text-gray-300 focus:outline-none">&lt;</button>
                         <div class="flex flex-col items-center">
                             <span class="text-xl font-bold">${date.getMonth() + 1}월 ${date.getDate()}일</span>
                             <span class="text-sm text-gray-500 dark:text-gray-400">
-                                ${getDayName(date)}요일
+                                ${getFullDayName(date)}
                                 ${date.toDateString() !== new Date().toDateString() ? `<button id="today-btn" class="ml-2 text-blue-500 hover:underline focus:outline-none">오늘</button>` : ''}
                             </span>
                         </div>
@@ -365,7 +416,7 @@
                         `;
                     }
                     if (isRegularWorkingDay && !hasData) {
-                         content += `
+                        content += `
                             <div class="w-full max-w-lg p-8 mb-6 rounded-2xl bg-yellow-100 dark:bg-yellow-900 shadow-xl border-4 border-yellow-500 dark:border-yellow-400">
                                 <h2 class="text-3xl font-bold text-center text-yellow-700 dark:text-yellow-200">정보 없음</h2>
                                 <p class="text-center text-yellow-500 dark:text-yellow-300 mt-2">(선택된 날짜의 시간표/급식 정보가 없습니다. 변동 공휴일이나 휴교일일 수 있습니다.)</p>
@@ -374,7 +425,6 @@
                     }
                     if (isRegularWorkingDay && hasData) {
                         content += `
-                            <!-- 종합 정보 박스 (복사/공유용) -->
                             <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                 <h2 class="text-lg font-semibold mb-2">${schoolInfo.grade}학년 ${schoolInfo.class}반</h2>
                                 <div class="whitespace-pre-line text-base mb-4">${getCombinedText()}</div>
@@ -385,19 +435,17 @@
                             </div>`;
                     }
 
-                    // 1. 날씨 카드 (Full Width)
                     const today = new Date();
-                    today.setHours(0, 0, 0, 0); // 시간 정보를 제거하여 날짜만 비교
+                    today.setHours(0, 0, 0, 0);
                     let weatherContent;
 
                     if (date < today) {
                         weatherContent = `<p class="text-gray-500 dark:text-gray-400">과거 날씨 정보는 제공하지 않습니다.</p>`;
                     } else if (weather && weather.weather_code !== undefined) {
-                        const weatherText = getWeatherDescription(weather.weather_code); // '비', '눈', '천둥 번개' 또는 ''
+                        const weatherText = getWeatherDescription(weather.weather_code);
                         const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
                         const locationDisplay = schoolInfo.cityDistrictName ? ` (${schoolInfo.cityDistrictName})` : '';
 
-                        // 날씨 텍스트가 있으면 (비/눈/천둥번개)
                         if (weatherText) {
                             weatherContent = `
                                 <div class="flex items-center space-x-4">
@@ -409,7 +457,6 @@
                                     </p>
                                 </div>`;
                         } else {
-                            // 맑음/흐림 등 (온도만 표시)
                             weatherContent = `
                                 <div class="flex items-center space-x-4">
                                     <p class="text-xl font-bold">${tempDisplay}
@@ -417,7 +464,6 @@
                                     </p>
                                 </div>`;
                         }
-
                     } else {
                         weatherContent = `<p class="text-gray-500 dark:text-gray-400">날씨 정보를 불러올 수 없습니다. (7일치 예보만 제공)</p>`;
                     }
@@ -427,27 +473,18 @@
                         ${weatherContent}
                     </div>`;
 
-                    // 2. 시간표 & 급식표 카드 (Side-by-Side 컨테이너)
                     if (isRegularWorkingDay) {
                         const timetableExists = timetable && timetable.length > 0;
                         const mealExists = meal && meal.length > 0;
 
                         if (timetableExists || mealExists) {
-                            content += `
-                                <!-- 시간표/급식표 Side-by-Side 컨테이너 -->
-                                <div class="w-full max-w-lg flex flex-wrap gap-4 mb-4">
-                            `;
-
-                            // 두 카드 모두 존재하면 절반씩 차지 (50% - gap/2)
-                            // 하나만 존재하면 전체 너비 차지
+                            content += `<div class="w-full max-w-lg flex flex-wrap gap-4 mb-4">`;
                             const cardWidthClass = (timetableExists && mealExists) ? 'w-full md:w-[calc(50%-0.5rem)]' : 'w-full';
 
-                            // 2-1. 시간표 카드
                             if (timetableExists) {
                                 content += `
                                     <div class="${cardWidthClass} p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                         <h2 class="text-lg font-semibold mb-2">시간표</h2>
-                                        <!-- 각 교시를 한 줄에 하나씩 표시 -->
                                         <ul class="divide-y divide-gray-200 dark:divide-gray-700">
                                             ${timetable.filter(item => item.ITRT_CNTNT).map(item => `
                                                 <li class="py-1 text-gray-700 dark:text-gray-200">
@@ -457,8 +494,7 @@
                                         </ul>
                                     </div>`;
                             }
-                            
-                            // 2-2. 급식 카드
+
                             if (mealExists) {
                                 content += `
                                     <div class="${cardWidthClass} p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
@@ -471,9 +507,45 @@
                                     </div>`;
                             }
 
-                            content += `</div>`; // Close Side-by-Side container
+                            content += `</div>`;
                         }
                     }
+
+                    content += `
+                        <div class="w-full max-w-lg p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md mt-2">
+                            <div class="flex justify-between items-center gap-2 mb-4">
+                                <button id="prev-week-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">이전 주</button>
+                                <div class="text-sm md:text-base font-bold text-center">${formatWeekRange(date)}</div>
+                                <button id="next-week-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">다음 주</button>
+                            </div>
+                            <div class="grid grid-cols-5 gap-2 mb-4">
+                                ${weekDates.filter(weekDate => !isWeekend(weekDate)).map(weekDate => {
+                                    const dateKey = formatDate(weekDate);
+                                    const isSelected = dateKey === currentDateKey;
+                                    const isToday = dateKey === formatDate(new Date());
+                                    const hasNote = !!getNoteForDate(dateKey).trim();
+                                    return `
+                                        <button data-week-date="${dateKey}" class="week-date-btn p-3 rounded-2xl border transition-colors duration-200 ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 dark:border-blue-400' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'}">
+                                            <div class="text-xs ${isToday ? 'font-bold' : 'text-gray-500 dark:text-gray-400'}">${getDayName(weekDate)}</div>
+                                            <div class="text-base font-bold">${weekDate.getDate()}</div>
+                                            <div class="text-[11px] mt-1 ${hasNote ? 'text-emerald-600 dark:text-emerald-300' : 'text-transparent'}">${hasNote ? '공지 있음' : '.'}</div>
+                                        </button>
+                                    `;
+                                }).join('')}
+                            </div>
+                            <div class="rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4">
+                                <div class="flex items-center justify-between gap-3 mb-3">
+                                    <h2 class="text-base font-semibold">${getFormattedDateWithDay(date)} 공지</h2>
+                                    <span class="text-xs text-gray-500 dark:text-gray-400">${currentNote ? '저장됨' : '없음'}</span>
+                                </div>
+                                <textarea id="daily-note-textarea" class="w-full h-28 px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 resize-none" placeholder="예:&#10;- 수학 수행평가&#10;- 준비물 챙기기">${currentNote}</textarea>
+                                <div class="flex justify-end gap-2 mt-3">
+                                    <button id="delete-note-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">삭제</button>
+                                    <button id="save-note-btn" class="px-4 py-2 rounded-2xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition-colors duration-200">공지 저장</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
                 }
             } else {
                 content += `<div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md flex justify-center items-center h-48"><p class="text-lg text-gray-500 dark:text-gray-400 text-center">설정에서 정보를 입력해주세요.</p></div>`;
@@ -482,20 +554,20 @@
             content += `</div>`;
             mainViewContainer.innerHTML = content;
         };
-        
-        // 설정 화면 렌더링
+
         const renderSettingsView = () => {
             const getTimetableRows = () => {
-                const maxPeriod = Math.max(8, ...Object.values(customTimetable).map(day => day ? day.length : 0).filter(len => len > 0));
+                const maxPeriod = Math.max(8, ...Object.values(customTimetable).map(day => day ? day.length : 0).filter(len => len > 0), 0);
                 return Array.from({ length: maxPeriod }, (_, i) => i + 1);
             };
+
+            const gradeOptions = getGradeOptions(schoolInfo.schoolType);
 
             settingsViewContainer.innerHTML = `
                 <div class="min-h-screen p-4 flex flex-col items-center">
                     <div class="w-full max-w-4xl p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-lg relative">
                         <h1 class="text-2xl font-bold mb-6">학교 설정 및 시간표 편집</h1>
                         <div class="flex flex-col md:flex-row gap-8">
-                            <!-- 좌측: 학교 정보 설정 -->
                             <div class="w-full md:w-1/3 space-y-4">
                                 <div>
                                     <label class="block text-sm font-semibold mb-2">학교명</label>
@@ -505,19 +577,17 @@
                                     </div>
                                     <ul id="search-results-list" class="mt-2 max-h-40 overflow-y-auto rounded-2xl border border-gray-300 dark:border-gray-600">
                                         ${searchResults.map(school => `
-                                            <li data-name="${school.SCHUL_NM}" data-code="${school.SD_SCHUL_CODE}" data-region-code="${school.ATPT_OFCDC_SC_CODE}" data-region-name="${school.LCTN_SC_NM}" data-city-district-name="${school.SIGUN_NM}" class="p-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200">${school.SCHUL_NM} (${school.SIGUN_NM || school.LCTN_SC_NM})</li>
+                                            <li data-name="${school.SCHUL_NM}" data-code="${school.SD_SCHUL_CODE}" data-region-code="${school.ATPT_OFCDC_SC_CODE}" data-region-name="${school.LCTN_SC_NM}" data-city-district-name="${school.SIGUN_NM}" data-school-type="${school.SCHUL_KND_SC_NM}" class="p-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200">${school.SCHUL_NM} (${school.SIGUN_NM || school.LCTN_SC_NM}, ${getSchoolTypeLabel(school.SCHUL_KND_SC_NM)})</li>
                                         `).join('')}
                                     </ul>
                                 </div>
-                                <!-- 학년 선택 -->
                                 <div>
                                     <label class="block text-sm font-semibold mb-2">학년</label>
                                     <select id="grade-select" class="w-full px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
                                         <option value="">학년을 선택하세요</option>
-                                        ${[1, 2, 3].map(grade => `<option value="${grade}" ${schoolInfo.grade == grade ? 'selected' : ''}>${grade}학년</option>`).join('')}
+                                        ${gradeOptions.map(grade => `<option value="${grade}" ${schoolInfo.grade == grade ? 'selected' : ''}>${grade}학년</option>`).join('')}
                                     </select>
                                 </div>
-                                <!-- 반 선택 -->
                                 <div>
                                     <label class="block text-sm font-semibold mb-2">반</label>
                                     <select id="class-select" class="w-full px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
@@ -527,7 +597,6 @@
                                 </div>
                                 <p class="text-sm text-gray-500 dark:text-gray-400 mt-4">* 학교 정보는 나이스 교육정보 개방포털에서 제공됩니다.</p>
                             </div>
-                            <!-- 우측: 시간표 편집 -->
                             <div class="w-full md:w-2/3">
                                 <h3 class="text-lg font-semibold mb-4">시간표 직접 입력</h3>
                                 <div class="overflow-x-auto">
@@ -562,8 +631,7 @@
                 </div>
             `;
         };
-        
-        // 이벤트 리스너 추가 함수
+
         const addEventListeners = () => {
             if (view === 'main') {
                 document.getElementById('settings-btn')?.addEventListener('click', () => { view = 'settings'; render(); });
@@ -572,60 +640,60 @@
                 document.getElementById('today-btn')?.addEventListener('click', goToToday);
                 document.getElementById('copy-btn')?.addEventListener('click', handleCopy);
                 document.getElementById('share-btn')?.addEventListener('click', handleShare);
+                document.getElementById('prev-week-btn')?.addEventListener('click', () => handleWeekChange(-1));
+                document.getElementById('next-week-btn')?.addEventListener('click', () => handleWeekChange(1));
+                document.querySelectorAll('.week-date-btn').forEach(button => {
+                    button.addEventListener('click', (e) => handleWeekDateSelect(e.currentTarget.dataset.weekDate));
+                });
+                document.getElementById('save-note-btn')?.addEventListener('click', handleSaveNote);
+                document.getElementById('delete-note-btn')?.addEventListener('click', handleDeleteNote);
             } else {
-                document.getElementById('school-search-input').addEventListener('input', (e) => { searchQuery = e.target.value; });
-                document.getElementById('school-search-btn').addEventListener('click', handleSchoolSearch);
-                document.getElementById('search-results-list').addEventListener('click', (e) => {
+                document.getElementById('school-search-input')?.addEventListener('input', (e) => { searchQuery = e.target.value; });
+                document.getElementById('school-search-btn')?.addEventListener('click', handleSchoolSearch);
+                document.getElementById('search-results-list')?.addEventListener('click', (e) => {
                     if (e.target.tagName === 'LI') {
-                        // 날씨 정확도 향상을 위해 cityDistrictName (시군구명)을 추가로 저장
+                        const newSchoolType = e.target.dataset.schoolType || '';
+                        const allowedGrades = getGradeOptions(newSchoolType).map(String);
                         schoolInfo = {
                             ...schoolInfo,
                             name: e.target.dataset.name,
                             code: e.target.dataset.code,
                             regionCode: e.target.dataset.regionCode,
-                            regionName: e.target.dataset.regionName, // 광역 지역명 (NEIS API용)
-                            cityDistrictName: e.target.dataset.cityDistrictName, // 시군구명 (날씨 API용)
+                            regionName: e.target.dataset.regionName,
+                            cityDistrictName: e.target.dataset.cityDistrictName,
+                            schoolType: newSchoolType,
+                            grade: allowedGrades.includes(String(schoolInfo.grade)) ? schoolInfo.grade : '',
                         };
                         searchResults = [];
                         render();
                     }
                 });
-                document.getElementById('grade-select').addEventListener('change', (e) => { schoolInfo.grade = e.target.value; });
-                document.getElementById('class-select').addEventListener('change', (e) => { schoolInfo.class = e.target.value; });
+                document.getElementById('grade-select')?.addEventListener('change', (e) => { schoolInfo.grade = e.target.value; });
+                document.getElementById('class-select')?.addEventListener('change', (e) => { schoolInfo.class = e.target.value; });
                 document.querySelectorAll('.timetable-input').forEach(input => {
                     input.addEventListener('input', (e) => {
                         const { day, period } = e.target.dataset;
                         const value = e.target.value;
-                        if (!customTimetable[day]) {
-                            customTimetable[day] = [];
-                        }
-                         while (customTimetable[day].length < period) {
-                             customTimetable[day].push('');
-                         }
+                        if (!customTimetable[day]) customTimetable[day] = [];
+                        while (customTimetable[day].length < period) customTimetable[day].push('');
                         customTimetable[day][period - 1] = value;
                     });
                 });
-                document.getElementById('cancel-settings-btn').addEventListener('click', () => { view = 'main'; render(); });
-                document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
+                document.getElementById('cancel-settings-btn')?.addEventListener('click', () => { view = 'main'; render(); });
+                document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
             }
         };
 
-        // 초기화
         document.addEventListener('DOMContentLoaded', () => {
             const savedSchoolInfo = localStorage.getItem('schoolInfo');
-            if (savedSchoolInfo) {
-                schoolInfo = JSON.parse(savedSchoolInfo);
-            }
+            if (savedSchoolInfo) schoolInfo = JSON.parse(savedSchoolInfo);
             const savedTimetable = localStorage.getItem('customTimetable');
-            if (savedTimetable) {
-                customTimetable = JSON.parse(savedTimetable);
-            }
+            if (savedTimetable) customTimetable = JSON.parse(savedTimetable);
+            const savedDailyNotes = localStorage.getItem('dailyNotes');
+            if (savedDailyNotes) dailyNotes = JSON.parse(savedDailyNotes);
 
-            if (schoolInfo.code && schoolInfo.regionCode) {
-                fetchData();
-            } else {
-                render();
-            }
+            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
+            else render();
         });
     </script>
 </body>
