@@ -12,6 +12,48 @@
         body {
             font-family: 'Noto Sans KR', sans-serif;
         }
+
+        .toggle-input {
+            display: none;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 52px;
+            height: 30px;
+            border-radius: 9999px;
+            background-color: #d1d5db;
+            transition: background-color 0.2s ease;
+            flex-shrink: 0;
+            cursor: pointer;
+            display: inline-block;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 24px;
+            height: 24px;
+            border-radius: 9999px;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            transition: transform 0.2s ease;
+        }
+
+        .toggle-input:checked + .toggle-switch {
+            background-color: #4f6fae;
+        }
+
+        .toggle-input:checked + .toggle-switch::after {
+            transform: translateX(22px);
+        }
+
+        .toggle-input:focus + .toggle-switch {
+            outline: 2px solid rgba(79, 111, 174, 0.35);
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-white transition-colors duration-300">
@@ -30,10 +72,19 @@
             class: '',
             schoolType: '',
         };
+
         let view = 'main';
         let customTimetable = {};
         let dailyNotes = {};
+        let cardVisibility = {
+            summary: true,
+            weather: true,
+            timetable: true,
+            meal: true,
+            notes: true,
+        };
         let date = new Date();
+        let selectedNoteDate = new Date();
         let weather = null;
         let meal = null;
         let timetable = null;
@@ -59,29 +110,29 @@
         const getLunarHolidaysForYear = (year) => {
             const lunarHolidaysMap = {
                 2024: [
-                    { month: 2, day: 9, name: "설날 연휴" }, { month: 2, day: 10, name: "설날" }, { month: 2, day: 11, name: "설날 연휴" },
-                    { month: 5, day: 15, name: "부처님 오신 날" },
-                    { month: 9, day: 16, name: "추석 연휴" }, { month: 9, day: 17, name: "추석" }, { month: 9, day: 18, name: "추석 연휴" },
+                    { month: 2, day: 9, name: '설날 연휴' }, { month: 2, day: 10, name: '설날' }, { month: 2, day: 11, name: '설날 연휴' },
+                    { month: 5, day: 15, name: '부처님 오신 날' },
+                    { month: 9, day: 16, name: '추석 연휴' }, { month: 9, day: 17, name: '추석' }, { month: 9, day: 18, name: '추석 연휴' },
                 ],
                 2025: [
-                    { month: 1, day: 28, name: "설날 연휴" }, { month: 1, day: 29, name: "설날" }, { month: 1, day: 30, name: "설날 연휴" },
-                    { month: 6, day: 1, name: "부처님 오신 날" }, { month: 6, day: 2, name: "대체 공휴일 (부처님 오신 날)" },
-                    { month: 10, day: 5, name: "추석 연휴" }, { month: 10, day: 6, name: "추석" }, { month: 10, day: 7, name: "추석 연휴" }, { month: 10, day: 8, name: "대체 공휴일 (추석)" },
+                    { month: 1, day: 28, name: '설날 연휴' }, { month: 1, day: 29, name: '설날' }, { month: 1, day: 30, name: '설날 연휴' },
+                    { month: 6, day: 1, name: '부처님 오신 날' }, { month: 6, day: 2, name: '대체 공휴일 (부처님 오신 날)' },
+                    { month: 10, day: 5, name: '추석 연휴' }, { month: 10, day: 6, name: '추석' }, { month: 10, day: 7, name: '추석 연휴' }, { month: 10, day: 8, name: '대체 공휴일 (추석)' },
                 ],
                 2026: [
-                    { month: 2, day: 16, name: "설날 연휴" }, { month: 2, day: 17, name: "설날" }, { month: 2, day: 18, name: "설날 연휴" },
-                    { month: 5, day: 25, name: "부처님 오신 날" },
-                    { month: 9, day: 25, name: "추석 연휴" }, { month: 9, day: 26, name: "추석" }, { month: 9, day: 27, name: "추석 연휴" }, { month: 9, day: 28, name: "대체 공휴일 (추석)" },
+                    { month: 2, day: 16, name: '설날 연휴' }, { month: 2, day: 17, name: '설날' }, { month: 2, day: 18, name: '설날 연휴' },
+                    { month: 5, day: 25, name: '부처님 오신 날' },
+                    { month: 9, day: 25, name: '추석 연휴' }, { month: 9, day: 26, name: '추석' }, { month: 9, day: 27, name: '추석 연휴' }, { month: 9, day: 28, name: '대체 공휴일 (추석)' },
                 ],
                 2027: [
-                    { month: 2, day: 8, name: "설날 연휴" }, { month: 2, day: 9, name: "설날" }, { month: 2, day: 10, name: "설날 연휴" },
-                    { month: 5, day: 15, name: "부처님 오신 날" }, { month: 5, day: 17, name: "대체 공휴일 (부처님 오신 날)" },
-                    { month: 9, day: 15, name: "추석 연휴" }, { month: 9, day: 16, name: "추석" }, { month: 9, day: 17, name: "추석 연휴" },
+                    { month: 2, day: 8, name: '설날 연휴' }, { month: 2, day: 9, name: '설날' }, { month: 2, day: 10, name: '설날 연휴' },
+                    { month: 5, day: 15, name: '부처님 오신 날' }, { month: 5, day: 17, name: '대체 공휴일 (부처님 오신 날)' },
+                    { month: 9, day: 15, name: '추석 연휴' }, { month: 9, day: 16, name: '추석' }, { month: 9, day: 17, name: '추석 연휴' },
                 ],
                 2028: [
-                    { month: 1, day: 25, name: "설날 연휴" }, { month: 1, day: 26, name: "설날" }, { month: 1, day: 27, name: "설날 연휴" },
-                    { month: 5, day: 12, name: "부처님 오신 날" },
-                    { month: 10, day: 2, name: "추석 연휴" }, { month: 10, day: 3, name: "추석 (개천절 중복)" }, { month: 10, day: 4, name: "추석 연휴" }, { month: 10, day: 5, name: "대체 공휴일 (추석)" },
+                    { month: 1, day: 25, name: '설날 연휴' }, { month: 1, day: 26, name: '설날' }, { month: 1, day: 27, name: '설날 연휴' },
+                    { month: 5, day: 12, name: '부처님 오신 날' },
+                    { month: 10, day: 2, name: '추석 연휴' }, { month: 10, day: 3, name: '추석 (개천절 중복)' }, { month: 10, day: 4, name: '추석 연휴' }, { month: 10, day: 5, name: '대체 공휴일 (추석)' },
                 ]
             };
             return lunarHolidaysMap[year] || [];
@@ -92,11 +143,15 @@
             const month = d.getMonth() + 1;
             const day = d.getDate();
             const fixedHolidays = [
-                { month: 1, day: 1, name: "신정" }, { month: 3, day: 1, name: "삼일절" },
-                { month: 5, day: 5, name: "어린이날" }, { month: 5, day: 6, name: "대체 공휴일 (어린이날)" },
-                { month: 6, day: 6, name: "현충일" }, { month: 8, day: 15, name: "광복절" },
-                { month: 10, day: 3, name: "개천절" }, { month: 10, day: 9, name: "한글날" },
-                { month: 12, day: 25, name: "성탄절" },
+                { month: 1, day: 1, name: '신정' },
+                { month: 3, day: 1, name: '삼일절' },
+                { month: 5, day: 5, name: '어린이날' },
+                { month: 5, day: 6, name: '대체 공휴일 (어린이날)' },
+                { month: 6, day: 6, name: '현충일' },
+                { month: 8, day: 15, name: '광복절' },
+                { month: 10, day: 3, name: '개천절' },
+                { month: 10, day: 9, name: '한글날' },
+                { month: 12, day: 25, name: '성탄절' },
             ];
             let holiday = fixedHolidays.find(h => h.month === month && h.day === day);
             if (holiday) return holiday.name;
@@ -112,6 +167,15 @@
         const getDayName = d => ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
         const getFullDayName = d => ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][d.getDay()];
         const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
+        const cloneDate = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const getDateKey = d => formatDate(d);
+
+        const getNearestWeekday = (d) => {
+            const copy = cloneDate(d);
+            if (copy.getDay() === 6) copy.setDate(copy.getDate() - 1);
+            if (copy.getDay() === 0) copy.setDate(copy.getDate() + 1);
+            return copy;
+        };
 
         const getSchoolTypeLabel = (schoolType) => {
             if (!schoolType) return '학교';
@@ -133,17 +197,21 @@
         };
 
         const getFormattedDateWithDay = (d) => `${d.getMonth() + 1}.${d.getDate()}(${getDayName(d)})`;
-        const getCurrentDateKey = () => formatDate(date);
-        const getNoteForDate = (dateKey = getCurrentDateKey()) => dailyNotes[dateKey] || '';
+        const getCurrentDateKey = () => getDateKey(date);
+        const getSelectedNoteDateKey = () => getDateKey(selectedNoteDate);
+        const getNoteForDate = (dateKey) => dailyNotes[dateKey] || '';
 
         const saveDailyNotes = () => {
             localStorage.setItem('dailyNotes', JSON.stringify(dailyNotes));
         };
 
+        const saveCardVisibility = () => {
+            localStorage.setItem('cardVisibility', JSON.stringify(cardVisibility));
+        };
+
         const getStartOfWeek = (baseDate) => {
-            const start = new Date(baseDate);
+            const start = cloneDate(baseDate);
             const day = start.getDay();
-            start.setHours(0, 0, 0, 0);
             start.setDate(start.getDate() - day + 1);
             return start;
         };
@@ -151,16 +219,16 @@
         const getWeekDates = (baseDate) => {
             const start = getStartOfWeek(baseDate);
             return Array.from({ length: 7 }, (_, index) => {
-                const current = new Date(start);
+                const current = cloneDate(start);
                 current.setDate(start.getDate() + index);
                 return current;
             });
         };
 
         const formatWeekRange = (baseDate) => {
-            const weekDates = getWeekDates(baseDate);
+            const weekDates = getWeekDates(baseDate).filter(weekDate => !isWeekend(weekDate));
             const start = weekDates[0];
-            const end = weekDates[6];
+            const end = weekDates[weekDates.length - 1];
             if (start.getMonth() === end.getMonth()) {
                 return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getDate()}일`;
             }
@@ -243,23 +311,22 @@
         };
 
         const handleWeekChange = (weeks) => {
-            date.setDate(date.getDate() + (weeks * 7));
-            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
-            else render();
+            selectedNoteDate.setDate(selectedNoteDate.getDate() + (weeks * 7));
+            selectedNoteDate = getNearestWeekday(selectedNoteDate);
+            render();
         };
 
         const handleWeekDateSelect = (dateString) => {
             const [year, month, day] = dateString.split('-').map(Number);
-            date = new Date(year, month - 1, day);
-            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
-            else render();
+            selectedNoteDate = new Date(year, month - 1, day);
+            render();
         };
 
         const handleSaveNote = () => {
             const textarea = document.getElementById('daily-note-textarea');
             if (!textarea) return;
             const value = textarea.value.trim();
-            const dateKey = getCurrentDateKey();
+            const dateKey = getSelectedNoteDateKey();
             if (value) dailyNotes[dateKey] = value;
             else delete dailyNotes[dateKey];
             saveDailyNotes();
@@ -267,7 +334,7 @@
         };
 
         const handleDeleteNote = () => {
-            const dateKey = getCurrentDateKey();
+            const dateKey = getSelectedNoteDateKey();
             delete dailyNotes[dateKey];
             saveDailyNotes();
             render();
@@ -296,6 +363,7 @@
         const saveSettings = () => {
             localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
             localStorage.setItem('customTimetable', JSON.stringify(customTimetable));
+            saveCardVisibility();
             view = 'main';
             if (schoolInfo.code && schoolInfo.regionCode) fetchData();
             else render();
@@ -303,23 +371,21 @@
 
         const getCombinedText = () => {
             const formattedDate = getFormattedDateWithDay(date);
-            const currentNote = getNoteForDate();
+            const currentNote = getNoteForDate(getCurrentDateKey());
 
             let weatherSummary = '정보 없음';
             if (weather && weather.weather_code !== undefined) {
                 const weatherText = getWeatherDescription(weather.weather_code);
                 const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
-                if (weatherText) {
-                    weatherSummary = `${tempDisplay} ${weatherText}${weather.precipitation_probability > 0 ? ` (${weather.precipitation_probability}%)` : ''}`;
-                } else {
-                    weatherSummary = tempDisplay;
-                }
+                weatherSummary = weatherText
+                    ? `${tempDisplay} ${weatherText}${weather.precipitation_probability > 0 ? ` (${weather.precipitation_probability}%)` : ''}`
+                    : tempDisplay;
             }
 
             const dateText = `${formattedDate} 날씨: ${weatherSummary}`;
             const mealText = `급식메뉴: ${meal && meal.length > 0 ? meal[0].DDISH_NM.split('<br/>').map(item => item.replace(/\((.*?)\)/g, '').trim()).join(', ') : '정보 없음'}`;
             const timetableText = `시간표: ${timetable && timetable.length > 0 ? timetable.filter(item => item.ITRT_CNTNT).map(item => item.ITRT_CNTNT).join(' ') : '정보 없음'}`;
-            const noteText = currentNote ? `\n\n${currentNote}` : '';
+            const noteText = currentNote ? `\n${currentNote}` : '';
             return `${dateText}\n\n${mealText}\n\n${timetableText}${noteText}`;
         };
 
@@ -347,8 +413,6 @@
                     title: `${schoolInfo.name} ${schoolInfo.grade}학년 ${schoolInfo.class}반 정보`,
                     text: getCombinedText(),
                 }).catch((error) => console.log('공유 실패', error));
-            } else {
-                console.log('웹 공유 API를 지원하지 않는 환경입니다.');
             }
         };
 
@@ -372,9 +436,9 @@
             const isHoliday = !!holidayName;
             const isRegularWorkingDay = !todayIsWeekend && !isHoliday;
             const hasData = isRegularWorkingDay && (meal || timetable);
-            const weekDates = getWeekDates(date);
-            const currentDateKey = getCurrentDateKey();
-            const currentNote = getNoteForDate();
+            const weekDates = getWeekDates(selectedNoteDate).filter(weekDate => !isWeekend(weekDate));
+            const selectedNoteDateKey = getSelectedNoteDateKey();
+            const currentNote = getNoteForDate(selectedNoteDateKey);
 
             let content = `
                 <div class="min-h-screen p-4 flex flex-col items-center">
@@ -415,6 +479,7 @@
                             </div>
                         `;
                     }
+
                     if (isRegularWorkingDay && !hasData) {
                         content += `
                             <div class="w-full max-w-lg p-8 mb-6 rounded-2xl bg-yellow-100 dark:bg-yellow-900 shadow-xl border-4 border-yellow-500 dark:border-yellow-400">
@@ -423,7 +488,8 @@
                             </div>
                         `;
                     }
-                    if (isRegularWorkingDay && hasData) {
+
+                    if (cardVisibility.summary && isRegularWorkingDay && hasData) {
                         content += `
                             <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                 <h2 class="text-lg font-semibold mb-2">${schoolInfo.grade}학년 ${schoolInfo.class}반</h2>
@@ -445,37 +511,24 @@
                         const weatherText = getWeatherDescription(weather.weather_code);
                         const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
                         const locationDisplay = schoolInfo.cityDistrictName ? ` (${schoolInfo.cityDistrictName})` : '';
-
-                        if (weatherText) {
-                            weatherContent = `
-                                <div class="flex items-center space-x-4">
-                                    <p class="text-xl font-bold">
-                                        ${tempDisplay}
-                                        <span class="ml-2 text-base text-gray-700 dark:text-gray-200">${weatherText}</span>
-                                        ${weather.precipitation_probability > 0 ? `<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">(${weather.precipitation_probability}%)</span>` : ''}
-                                        <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span>
-                                    </p>
-                                </div>`;
-                        } else {
-                            weatherContent = `
-                                <div class="flex items-center space-x-4">
-                                    <p class="text-xl font-bold">${tempDisplay}
-                                        <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span>
-                                    </p>
-                                </div>`;
-                        }
+                        weatherContent = weatherText
+                            ? `<div class="flex items-center space-x-4"><p class="text-xl font-bold">${tempDisplay}<span class="ml-2 text-base text-gray-700 dark:text-gray-200">${weatherText}</span>${weather.precipitation_probability > 0 ? `<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">(${weather.precipitation_probability}%)</span>` : ''}<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span></p></div>`
+                            : `<div class="flex items-center space-x-4"><p class="text-xl font-bold">${tempDisplay}<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span></p></div>`;
                     } else {
                         weatherContent = `<p class="text-gray-500 dark:text-gray-400">날씨 정보를 불러올 수 없습니다. (7일치 예보만 제공)</p>`;
                     }
 
-                    content += `<div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
-                        <h2 class="text-lg font-semibold mb-2">날씨</h2>
-                        ${weatherContent}
-                    </div>`;
+                    if (cardVisibility.weather) {
+                        content += `
+                            <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
+                                <h2 class="text-lg font-semibold mb-2">날씨</h2>
+                                ${weatherContent}
+                            </div>`;
+                    }
 
                     if (isRegularWorkingDay) {
-                        const timetableExists = timetable && timetable.length > 0;
-                        const mealExists = meal && meal.length > 0;
+                        const timetableExists = cardVisibility.timetable && timetable && timetable.length > 0;
+                        const mealExists = cardVisibility.meal && meal && meal.length > 0;
 
                         if (timetableExists || mealExists) {
                             content += `<div class="w-full max-w-lg flex flex-wrap gap-4 mb-4">`;
@@ -511,41 +564,46 @@
                         }
                     }
 
-                    content += `
-                        <div class="w-full max-w-lg p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md mt-2">
-                            <div class="flex justify-between items-center gap-2 mb-4">
-                                <button id="prev-week-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">이전 주</button>
-                                <div class="text-sm md:text-base font-bold text-center">${formatWeekRange(date)}</div>
-                                <button id="next-week-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">다음 주</button>
-                            </div>
-                            <div class="grid grid-cols-5 gap-2 mb-4">
-                                ${weekDates.filter(weekDate => !isWeekend(weekDate)).map(weekDate => {
-                                    const dateKey = formatDate(weekDate);
-                                    const isSelected = dateKey === currentDateKey;
-                                    const isToday = dateKey === formatDate(new Date());
-                                    const hasNote = !!getNoteForDate(dateKey).trim();
-                                    return `
-                                        <button data-week-date="${dateKey}" class="week-date-btn p-3 rounded-2xl border transition-colors duration-200 ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 dark:border-blue-400' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'}">
-                                            <div class="text-xs ${isToday ? 'font-bold' : 'text-gray-500 dark:text-gray-400'}">${getDayName(weekDate)}</div>
-                                            <div class="text-base font-bold">${weekDate.getDate()}</div>
-                                            <div class="text-[11px] mt-1 ${hasNote ? 'text-emerald-600 dark:text-emerald-300' : 'text-transparent'}">${hasNote ? '공지 있음' : '.'}</div>
-                                        </button>
-                                    `;
-                                }).join('')}
-                            </div>
-                            <div class="rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4">
-                                <div class="flex items-center justify-between gap-3 mb-3">
-                                    <h2 class="text-base font-semibold">${getFormattedDateWithDay(date)} 공지</h2>
-                                    <span class="text-xs text-gray-500 dark:text-gray-400">${currentNote ? '저장됨' : '없음'}</span>
+                    if (cardVisibility.notes) {
+                        content += `
+                            <div class="w-full max-w-lg p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md mt-2">
+                                <div class="flex justify-between items-center gap-2 mb-4">
+                                    <button id="prev-week-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">이전 주</button>
+                                    <div class="text-sm md:text-base font-bold text-center">${formatWeekRange(selectedNoteDate)}</div>
+                                    <button id="next-week-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">다음 주</button>
                                 </div>
-                                <textarea id="daily-note-textarea" class="w-full h-28 px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 resize-none" placeholder="예:&#10;- 수학 수행평가&#10;- 준비물 챙기기">${currentNote}</textarea>
-                                <div class="flex justify-end gap-2 mt-3">
-                                    <button id="delete-note-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">삭제</button>
-                                    <button id="save-note-btn" class="px-4 py-2 rounded-2xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition-colors duration-200">공지 저장</button>
+                                <div class="grid grid-cols-5 gap-2 mb-4">
+                                    ${weekDates.map(weekDate => {
+                                        const dateKey = getDateKey(weekDate);
+                                        const isSelected = dateKey === selectedNoteDateKey;
+                                        const isToday = dateKey === getDateKey(new Date());
+                                        const hasNote = !!getNoteForDate(dateKey).trim();
+                                        const numberClass = isSelected
+                                            ? 'text-white'
+                                            : hasNote
+                                                ? 'text-emerald-600 dark:text-emerald-300'
+                                                : 'text-current';
+                                        return `
+                                            <button data-week-date="${dateKey}" class="week-date-btn p-3 rounded-2xl border transition-colors duration-200 ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 dark:border-blue-400' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'}">
+                                                <div class="text-xs ${isToday ? 'font-bold' : 'text-gray-500 dark:text-gray-400'}">${getDayName(weekDate)}</div>
+                                                <div class="text-base font-bold ${numberClass}">${weekDate.getDate()}</div>
+                                            </button>
+                                        `;
+                                    }).join('')}
                                 </div>
-                            </div>
-                        </div>
-                    `;
+                                <div class="rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4">
+                                    <div class="flex items-center justify-between gap-3 mb-3">
+                                        <h2 class="text-base font-semibold">${getFormattedDateWithDay(selectedNoteDate)} 공지</h2>
+                                        <span class="text-xs text-gray-500 dark:text-gray-400">${currentNote ? '저장됨' : '없음'}</span>
+                                    </div>
+                                    <textarea id="daily-note-textarea" class="w-full h-28 px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 resize-none" placeholder="예:&#10;- 수학 수행평가&#10;- 준비물 챙기기">${currentNote}</textarea>
+                                    <div class="flex justify-end gap-2 mt-3">
+                                        <button id="delete-note-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">삭제</button>
+                                        <button id="save-note-btn" class="px-4 py-2 rounded-2xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition-colors duration-200">공지 저장</button>
+                                    </div>
+                                </div>
+                            </div>`;
+                    }
                 }
             } else {
                 content += `<div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md flex justify-center items-center h-48"><p class="text-lg text-gray-500 dark:text-gray-400 text-center">설정에서 정보를 입력해주세요.</p></div>`;
@@ -595,7 +653,48 @@
                                         ${[...Array(20).keys()].map(i => `<option value="${i + 1}" ${schoolInfo.class == (i + 1) ? 'selected' : ''}>${i + 1}반</option>`).join('')}
                                     </select>
                                 </div>
-                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-4">* 학교 정보는 나이스 교육정보 개방포털에서 제공됩니다.</p>
+                                <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                    <p class="text-sm font-semibold mb-3">카드 표시 설정</p>
+                                    <div class="space-y-2">
+                                        <label class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-100 dark:bg-gray-700 cursor-pointer">
+                                            <span class="text-sm">정보 종합 공유 카드</span>
+                                            <div>
+                                                <input id="toggle-summary-card" type="checkbox" ${cardVisibility.summary ? 'checked' : ''} class="toggle-input" />
+                                                <span class="toggle-switch"></span>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-100 dark:bg-gray-700 cursor-pointer">
+                                            <span class="text-sm">날씨 카드</span>
+                                            <div>
+                                                <input id="toggle-weather-card" type="checkbox" ${cardVisibility.weather ? 'checked' : ''} class="toggle-input" />
+                                                <span class="toggle-switch"></span>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-100 dark:bg-gray-700 cursor-pointer">
+                                            <span class="text-sm">시간표 카드</span>
+                                            <div>
+                                                <input id="toggle-timetable-card" type="checkbox" ${cardVisibility.timetable ? 'checked' : ''} class="toggle-input" />
+                                                <span class="toggle-switch"></span>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-100 dark:bg-gray-700 cursor-pointer">
+                                            <span class="text-sm">급식표 카드</span>
+                                            <div>
+                                                <input id="toggle-meal-card" type="checkbox" ${cardVisibility.meal ? 'checked' : ''} class="toggle-input" />
+                                                <span class="toggle-switch"></span>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-100 dark:bg-gray-700 cursor-pointer">
+                                            <span class="text-sm">날짜별 공지 작성 카드</span>
+                                            <div>
+                                                <input id="toggle-notes-card" type="checkbox" ${cardVisibility.notes ? 'checked' : ''} class="toggle-input" />
+                                                <span class="toggle-switch"></span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-4">* 날짜 네비게이션은 항상 표시됩니다.</p>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">* 학교 정보는 나이스 교육정보 개방포털에서 제공됩니다.</p>
                             </div>
                             <div class="w-full md:w-2/3">
                                 <h3 class="text-lg font-semibold mb-4">시간표 직접 입력</h3>
@@ -670,6 +769,11 @@
                 });
                 document.getElementById('grade-select')?.addEventListener('change', (e) => { schoolInfo.grade = e.target.value; });
                 document.getElementById('class-select')?.addEventListener('change', (e) => { schoolInfo.class = e.target.value; });
+                document.getElementById('toggle-summary-card')?.addEventListener('change', (e) => { cardVisibility.summary = e.target.checked; saveCardVisibility(); });
+                document.getElementById('toggle-weather-card')?.addEventListener('change', (e) => { cardVisibility.weather = e.target.checked; saveCardVisibility(); });
+                document.getElementById('toggle-timetable-card')?.addEventListener('change', (e) => { cardVisibility.timetable = e.target.checked; saveCardVisibility(); });
+                document.getElementById('toggle-meal-card')?.addEventListener('change', (e) => { cardVisibility.meal = e.target.checked; saveCardVisibility(); });
+                document.getElementById('toggle-notes-card')?.addEventListener('change', (e) => { cardVisibility.notes = e.target.checked; saveCardVisibility(); });
                 document.querySelectorAll('.timetable-input').forEach(input => {
                     input.addEventListener('input', (e) => {
                         const { day, period } = e.target.dataset;
@@ -687,13 +791,23 @@
         document.addEventListener('DOMContentLoaded', () => {
             const savedSchoolInfo = localStorage.getItem('schoolInfo');
             if (savedSchoolInfo) schoolInfo = JSON.parse(savedSchoolInfo);
+
             const savedTimetable = localStorage.getItem('customTimetable');
             if (savedTimetable) customTimetable = JSON.parse(savedTimetable);
+
             const savedDailyNotes = localStorage.getItem('dailyNotes');
             if (savedDailyNotes) dailyNotes = JSON.parse(savedDailyNotes);
 
-            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
-            else render();
+            const savedCardVisibility = localStorage.getItem('cardVisibility');
+            if (savedCardVisibility) cardVisibility = { ...cardVisibility, ...JSON.parse(savedCardVisibility) };
+
+            selectedNoteDate = getNearestWeekday(new Date());
+
+            if (schoolInfo.code && schoolInfo.regionCode) {
+                fetchData();
+            } else {
+                render();
+            }
         });
     </script>
 </body>
