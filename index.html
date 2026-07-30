@@ -1,446 +1,606 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>시간표 급식표 조회</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100..900&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Noto Sans KR', sans-serif;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>시간표 급식표 조회</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100..900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+    }
 
-        .toggle-input {
-            display: none;
-        }
+    .toggle-input {
+      display: none;
+    }
 
-        .toggle-switch {
-            position: relative;
-            width: 52px;
-            height: 30px;
-            border-radius: 9999px;
-            background-color: #d1d5db;
-            transition: background-color 0.2s ease;
-            flex-shrink: 0;
-            cursor: pointer;
-            display: inline-block;
-        }
+    .toggle-switch {
+      position: relative;
+      width: 52px;
+      height: 30px;
+      border-radius: 9999px;
+      background-color: #d1d5db;
+      transition: background-color 0.2s ease;
+      flex-shrink: 0;
+      cursor: pointer;
+      display: inline-block;
+    }
 
-        .toggle-switch::after {
-            content: '';
-            position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 24px;
-            height: 24px;
-            border-radius: 9999px;
-            background-color: white;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-            transition: transform 0.2s ease;
-        }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 24px;
+      height: 24px;
+      border-radius: 9999px;
+      background-color: white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s ease;
+    }
 
-        .toggle-input:checked + .toggle-switch {
-            background-color: #4f6fae;
-        }
+    .toggle-input:checked+.toggle-switch {
+      background-color: #4f6fae;
+    }
 
-        .toggle-input:checked + .toggle-switch::after {
-            transform: translateX(22px);
-        }
+    .toggle-input:checked+.toggle-switch::after {
+      transform: translateX(22px);
+    }
 
-        .toggle-input:focus + .toggle-switch {
-            outline: 2px solid rgba(79, 111, 174, 0.35);
-            outline-offset: 2px;
-        }
-    </style>
+    .toggle-input:focus+.toggle-switch {
+      outline: 2px solid rgba(79, 111, 174, 0.35);
+      outline-offset: 2px;
+    }
+  </style>
 </head>
+
 <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-white transition-colors duration-300">
 
-    <div id="main-view"></div>
-    <div id="settings-view" class="hidden"></div>
+  <div id="main-view"></div>
+  <div id="settings-view" class="hidden"></div>
 
-    <script>
-        let schoolInfo = {
-            name: '',
-            code: '',
-            regionCode: '',
-            regionName: '',
-            cityDistrictName: '',
-            grade: '',
-            class: '',
-            schoolType: '',
-        };
-
-        let view = 'main';
-        let customTimetable = {};
-        let dailyNotes = {};
-        let cardVisibility = {
-            summary: true,
-            weather: true,
-            timetable: true,
-            meal: true,
-            notes: true,
-        };
-        let date = new Date();
-        let selectedNoteDate = new Date();
-        let weather = null;
-        let meal = null;
-        let timetable = null;
-        let isLoading = false;
-        let searchQuery = '';
-        let searchResults = [];
-
-        const NEIS_API_KEY = "2ab5d56a9a7a4baeba5b12519dd6369b";
-        const NEIS_API_URL = "https://open.neis.go.kr/hub/";
-        const WEATHER_API_URL_FORECAST = "https://api.open-meteo.com/v1/forecast";
-
-        const mainViewContainer = document.getElementById('main-view');
-        const settingsViewContainer = document.getElementById('settings-view');
-
-        const getWeatherDescription = (code) => {
-            if ([0, 1, 2, 3, 45, 48, 51, 53, 55].includes(code)) return '';
-            if ([56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '비';
-            if ([71, 73, 75, 77, 85, 86].includes(code)) return '눈';
-            if ([95, 96, 99].includes(code)) return '천둥 번개';
-            return '';
-        };
-
-        const getLunarHolidaysForYear = (year) => {
-            const lunarHolidaysMap = {
-                2024: [
-                    { month: 2, day: 9, name: '설날 연휴' }, { month: 2, day: 10, name: '설날' }, { month: 2, day: 11, name: '설날 연휴' },
-                    { month: 5, day: 15, name: '부처님 오신 날' },
-                    { month: 9, day: 16, name: '추석 연휴' }, { month: 9, day: 17, name: '추석' }, { month: 9, day: 18, name: '추석 연휴' },
-                ],
-                2025: [
-                    { month: 1, day: 28, name: '설날 연휴' }, { month: 1, day: 29, name: '설날' }, { month: 1, day: 30, name: '설날 연휴' },
-                    { month: 6, day: 1, name: '부처님 오신 날' }, { month: 6, day: 2, name: '대체 공휴일 (부처님 오신 날)' },
-                    { month: 10, day: 5, name: '추석 연휴' }, { month: 10, day: 6, name: '추석' }, { month: 10, day: 7, name: '추석 연휴' }, { month: 10, day: 8, name: '대체 공휴일 (추석)' },
-                ],
-                2026: [
-                    { month: 2, day: 16, name: '설날 연휴' }, { month: 2, day: 17, name: '설날' }, { month: 2, day: 18, name: '설날 연휴' },
-                    { month: 5, day: 25, name: '부처님 오신 날' },
-                    { month: 9, day: 25, name: '추석 연휴' }, { month: 9, day: 26, name: '추석' }, { month: 9, day: 27, name: '추석 연휴' }, { month: 9, day: 28, name: '대체 공휴일 (추석)' },
-                ],
-                2027: [
-                    { month: 2, day: 8, name: '설날 연휴' }, { month: 2, day: 9, name: '설날' }, { month: 2, day: 10, name: '설날 연휴' },
-                    { month: 5, day: 15, name: '부처님 오신 날' }, { month: 5, day: 17, name: '대체 공휴일 (부처님 오신 날)' },
-                    { month: 9, day: 15, name: '추석 연휴' }, { month: 9, day: 16, name: '추석' }, { month: 9, day: 17, name: '추석 연휴' },
-                ],
-                2028: [
-                    { month: 1, day: 25, name: '설날 연휴' }, { month: 1, day: 26, name: '설날' }, { month: 1, day: 27, name: '설날 연휴' },
-                    { month: 5, day: 12, name: '부처님 오신 날' },
-                    { month: 10, day: 2, name: '추석 연휴' }, { month: 10, day: 3, name: '추석 (개천절 중복)' }, { month: 10, day: 4, name: '추석 연휴' }, { month: 10, day: 5, name: '대체 공휴일 (추석)' },
-                ]
-            };
-            return lunarHolidaysMap[year] || [];
-        };
-
-        const isPublicHoliday = (d) => {
-            const year = d.getFullYear();
-            const month = d.getMonth() + 1;
-            const day = d.getDate();
-            const fixedHolidays = [
-                { month: 1, day: 1, name: '신정' },
-                { month: 3, day: 1, name: '삼일절' },
-                { month: 5, day: 5, name: '어린이날' },
-                { month: 5, day: 6, name: '대체 공휴일 (어린이날)' },
-                { month: 6, day: 6, name: '현충일' },
-                { month: 8, day: 15, name: '광복절' },
-                { month: 10, day: 3, name: '개천절' },
-                { month: 10, day: 9, name: '한글날' },
-                { month: 12, day: 25, name: '성탄절' },
-            ];
-            let holiday = fixedHolidays.find(h => h.month === month && h.day === day);
-            if (holiday) return holiday.name;
-            const lunarHolidays = getLunarHolidaysForYear(year);
-            holiday = lunarHolidays.find(h => h.month === month && h.day === day);
-            if (holiday) return holiday.name;
-            return false;
-        };
-
-        const formatDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const formatDateForNeis = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-        const getSemester = d => (d.getMonth() + 1 >= 3 && d.getMonth() + 1 <= 7) ? '1' : '2';
-        const getDayName = d => ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
-        const getFullDayName = d => ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][d.getDay()];
-        const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
-        const cloneDate = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-        const getDateKey = d => formatDate(d);
-
-        const getNearestWeekday = (d) => {
-            const copy = cloneDate(d);
-            if (copy.getDay() === 6) copy.setDate(copy.getDate() - 1);
-            if (copy.getDay() === 0) copy.setDate(copy.getDate() + 1);
-            return copy;
-        };
-
-        const getSchoolTypeLabel = (schoolType) => {
-            if (!schoolType) return '학교';
-            if (schoolType.includes('초')) return '초등학교';
-            if (schoolType.includes('중')) return '중학교';
-            if (schoolType.includes('고')) return '고등학교';
-            return schoolType;
-        };
-
-        const getGradeOptions = (schoolType) => {
-            if (schoolType && schoolType.includes('초')) return [1, 2, 3, 4, 5, 6];
-            return [1, 2, 3];
-        };
-
-        const getTimetableEndpoint = (schoolType) => {
-            if (schoolType && schoolType.includes('중')) return 'misTimetable';
-            if (schoolType && schoolType.includes('고')) return 'hisTimetable';
-            return 'elsTimetable';
-        };
-
-        const getFormattedDateWithDay = (d) => `${d.getMonth() + 1}.${d.getDate()}(${getDayName(d)})`;
-        const getCurrentDateKey = () => getDateKey(date);
-        const getSelectedNoteDateKey = () => getDateKey(selectedNoteDate);
-        const getNoteForDate = (dateKey) => dailyNotes[dateKey] || '';
-
-        const saveDailyNotes = () => {
-            localStorage.setItem('dailyNotes', JSON.stringify(dailyNotes));
-        };
-
-        const saveCardVisibility = () => {
-            localStorage.setItem('cardVisibility', JSON.stringify(cardVisibility));
-        };
-
-        const getStartOfWeek = (baseDate) => {
-            const start = cloneDate(baseDate);
-            const day = start.getDay();
-            start.setDate(start.getDate() - day + 1);
-            return start;
-        };
-
-        const getWeekDates = (baseDate) => {
-            const start = getStartOfWeek(baseDate);
-            return Array.from({ length: 7 }, (_, index) => {
-                const current = cloneDate(start);
-                current.setDate(start.getDate() + index);
-                return current;
-            });
-        };
-
-        const formatWeekRange = (baseDate) => {
-            const weekDates = getWeekDates(baseDate).filter(weekDate => !isWeekend(weekDate));
-            const start = weekDates[0];
-            const end = weekDates[weekDates.length - 1];
-            if (start.getMonth() === end.getMonth()) {
-                return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getDate()}일`;
+  <script>
+    let schoolInfo = {
+      name: '',
+      code: '',
+      regionCode: '',
+      regionName: '',
+      cityDistrictName: '',
+      grade: '',
+      class: '',
+      schoolType: '',
+    };
+    let view = 'main';
+    let customTimetable = {};
+    let dailyNotes = {};
+    let cardVisibility = {
+      summary: true,
+      weather: true,
+      timetable: true,
+      meal: true,
+      notes: true,
+    };
+    let date = new Date();
+    let selectedNoteDate = new Date();
+    let weather = null;
+    let meal = null;
+    let timetable = null;
+    let isLoading = false;
+    let searchQuery = '';
+    let searchResults = [];
+    const NEIS_API_KEY = "2ab5d56a9a7a4baeba5b12519dd6369b";
+    const NEIS_API_URL = "https://open.neis.go.kr/hub/";
+    const WEATHER_API_URL_FORECAST = "https://api.open-meteo.com/v1/forecast";
+    const mainViewContainer = document.getElementById('main-view');
+    const settingsViewContainer = document.getElementById('settings-view');
+    const getWeatherDescription = (code) => {
+      if ([0, 1, 2, 3, 45, 48, 51, 53, 55].includes(code)) return '';
+      if ([56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '비';
+      if ([71, 73, 75, 77, 85, 86].includes(code)) return '눈';
+      if ([95, 96, 99].includes(code)) return '천둥 번개';
+      return '';
+    };
+    const getLunarHolidaysForYear = (year) => {
+      const lunarHolidaysMap = {
+        2024: [{
+            month: 2,
+            day: 9,
+            name: '설날 연휴'
+          }, {
+            month: 2,
+            day: 10,
+            name: '설날'
+          }, {
+            month: 2,
+            day: 11,
+            name: '설날 연휴'
+          },
+          {
+            month: 5,
+            day: 15,
+            name: '부처님 오신 날'
+          },
+          {
+            month: 9,
+            day: 16,
+            name: '추석 연휴'
+          }, {
+            month: 9,
+            day: 17,
+            name: '추석'
+          }, {
+            month: 9,
+            day: 18,
+            name: '추석 연휴'
+          },
+        ],
+        2025: [{
+            month: 1,
+            day: 28,
+            name: '설날 연휴'
+          }, {
+            month: 1,
+            day: 29,
+            name: '설날'
+          }, {
+            month: 1,
+            day: 30,
+            name: '설날 연휴'
+          },
+          {
+            month: 6,
+            day: 1,
+            name: '부처님 오신 날'
+          }, {
+            month: 6,
+            day: 2,
+            name: '대체 공휴일 (부처님 오신 날)'
+          },
+          {
+            month: 10,
+            day: 5,
+            name: '추석 연휴'
+          }, {
+            month: 10,
+            day: 6,
+            name: '추석'
+          }, {
+            month: 10,
+            day: 7,
+            name: '추석 연휴'
+          }, {
+            month: 10,
+            day: 8,
+            name: '대체 공휴일 (추석)'
+          },
+        ],
+        2026: [{
+            month: 2,
+            day: 16,
+            name: '설날 연휴'
+          }, {
+            month: 2,
+            day: 17,
+            name: '설날'
+          }, {
+            month: 2,
+            day: 18,
+            name: '설날 연휴'
+          },
+          {
+            month: 5,
+            day: 25,
+            name: '부처님 오신 날'
+          },
+          {
+            month: 9,
+            day: 25,
+            name: '추석 연휴'
+          }, {
+            month: 9,
+            day: 26,
+            name: '추석'
+          }, {
+            month: 9,
+            day: 27,
+            name: '추석 연휴'
+          }, {
+            month: 9,
+            day: 28,
+            name: '대체 공휴일 (추석)'
+          },
+        ],
+        2027: [{
+            month: 2,
+            day: 8,
+            name: '설날 연휴'
+          }, {
+            month: 2,
+            day: 9,
+            name: '설날'
+          }, {
+            month: 2,
+            day: 10,
+            name: '설날 연휴'
+          },
+          {
+            month: 5,
+            day: 15,
+            name: '부처님 오신 날'
+          }, {
+            month: 5,
+            day: 17,
+            name: '대체 공휴일 (부처님 오신 날)'
+          },
+          {
+            month: 9,
+            day: 15,
+            name: '추석 연휴'
+          }, {
+            month: 9,
+            day: 16,
+            name: '추석'
+          }, {
+            month: 9,
+            day: 17,
+            name: '추석 연휴'
+          },
+        ],
+        2028: [{
+            month: 1,
+            day: 25,
+            name: '설날 연휴'
+          }, {
+            month: 1,
+            day: 26,
+            name: '설날'
+          }, {
+            month: 1,
+            day: 27,
+            name: '설날 연휴'
+          },
+          {
+            month: 5,
+            day: 12,
+            name: '부처님 오신 날'
+          },
+          {
+            month: 10,
+            day: 2,
+            name: '추석 연휴'
+          }, {
+            month: 10,
+            day: 3,
+            name: '추석 (개천절 중복)'
+          }, {
+            month: 10,
+            day: 4,
+            name: '추석 연휴'
+          }, {
+            month: 10,
+            day: 5,
+            name: '대체 공휴일 (추석)'
+          },
+        ]
+      };
+      return lunarHolidaysMap[year] || [];
+    };
+    const isPublicHoliday = (d) => {
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      const fixedHolidays = [{
+          month: 1,
+          day: 1,
+          name: '신정'
+        },
+        {
+          month: 3,
+          day: 1,
+          name: '삼일절'
+        },
+        {
+          month: 5,
+          day: 5,
+          name: '어린이날'
+        },
+        {
+          month: 5,
+          day: 6,
+          name: '대체 공휴일 (어린이날)'
+        },
+        {
+          month: 6,
+          day: 6,
+          name: '현충일'
+        },
+        {
+          month: 8,
+          day: 15,
+          name: '광복절'
+        },
+        {
+          month: 10,
+          day: 3,
+          name: '개천절'
+        },
+        {
+          month: 10,
+          day: 9,
+          name: '한글날'
+        },
+        {
+          month: 12,
+          day: 25,
+          name: '성탄절'
+        },
+      ];
+      let holiday = fixedHolidays.find(h => h.month === month && h.day === day);
+      if (holiday) return holiday.name;
+      const lunarHolidays = getLunarHolidaysForYear(year);
+      holiday = lunarHolidays.find(h => h.month === month && h.day === day);
+      if (holiday) return holiday.name;
+      return false;
+    };
+    const formatDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const formatDateForNeis = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const getSemester = d => (d.getMonth() + 1 >= 3 && d.getMonth() + 1 <= 7) ? '1' : '2';
+    const getDayName = d => ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+    const getFullDayName = d => ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][d.getDay()];
+    const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
+    const cloneDate = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const getDateKey = d => formatDate(d);
+    const getNearestWeekday = (d) => {
+      const copy = cloneDate(d);
+      if (copy.getDay() === 6) copy.setDate(copy.getDate() - 1);
+      if (copy.getDay() === 0) copy.setDate(copy.getDate() + 1);
+      return copy;
+    };
+    const getSchoolTypeLabel = (schoolType) => {
+      if (!schoolType) return '학교';
+      if (schoolType.includes('초')) return '초등학교';
+      if (schoolType.includes('중')) return '중학교';
+      if (schoolType.includes('고')) return '고등학교';
+      return schoolType;
+    };
+    const getGradeOptions = (schoolType) => {
+      if (schoolType && schoolType.includes('초')) return [1, 2, 3, 4, 5, 6];
+      return [1, 2, 3];
+    };
+    const getTimetableEndpoint = (schoolType) => {
+      if (schoolType && schoolType.includes('중')) return 'misTimetable';
+      if (schoolType && schoolType.includes('고')) return 'hisTimetable';
+      return 'elsTimetable';
+    };
+    const getFormattedDateWithDay = (d) => `${d.getMonth() + 1}.${d.getDate()}(${getDayName(d)})`;
+    const getCurrentDateKey = () => getDateKey(date);
+    const getSelectedNoteDateKey = () => getDateKey(selectedNoteDate);
+    const getNoteForDate = (dateKey) => dailyNotes[dateKey] || '';
+    const saveDailyNotes = () => {
+      localStorage.setItem('dailyNotes', JSON.stringify(dailyNotes));
+    };
+    const saveCardVisibility = () => {
+      localStorage.setItem('cardVisibility', JSON.stringify(cardVisibility));
+    };
+    const getStartOfWeek = (baseDate) => {
+      const start = cloneDate(baseDate);
+      const day = start.getDay();
+      start.setDate(start.getDate() - day + 1);
+      return start;
+    };
+    const getWeekDates = (baseDate) => {
+      const start = getStartOfWeek(baseDate);
+      return Array.from({
+        length: 7
+      }, (_, index) => {
+        const current = cloneDate(start);
+        current.setDate(start.getDate() + index);
+        return current;
+      });
+    };
+    const formatWeekRange = (baseDate) => {
+      const weekDates = getWeekDates(baseDate).filter(weekDate => !isWeekend(weekDate));
+      const start = weekDates[0];
+      const end = weekDates[weekDates.length - 1];
+      if (start.getMonth() === end.getMonth()) {
+        return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getDate()}일`;
+      }
+      return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getMonth() + 1}월 ${end.getDate()}일`;
+    };
+    const fetchData = async () => {
+      isLoading = true;
+      weather = null;
+      meal = null;
+      timetable = null;
+      render();
+      try {
+        let forecastForSelectedDay = null;
+        const locationForWeather = schoolInfo.cityDistrictName || schoolInfo.regionName;
+        if (locationForWeather) {
+          const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${locationForWeather}&count=1&language=ko&format=json`);
+          const geoData = await geoResponse.json();
+          if (geoData.results && geoData.results.length > 0) {
+            const {
+              latitude,
+              longitude
+            } = geoData.results[0];
+            const weatherResponse = await fetch(`${WEATHER_API_URL_FORECAST}?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7`);
+            const weatherData = await weatherResponse.json();
+            if (weatherData.daily) {
+              const selectedDateStr = formatDate(date);
+              const dateIndex = weatherData.daily.time.findIndex(time => time.startsWith(selectedDateStr));
+              if (dateIndex !== -1) {
+                forecastForSelectedDay = {
+                  temp_min: weatherData.daily.temperature_2m_min[dateIndex],
+                  temp_max: weatherData.daily.temperature_2m_max[dateIndex],
+                  weather_code: weatherData.daily.weather_code[dateIndex],
+                  precipitation_probability: weatherData.daily.precipitation_probability_max[dateIndex]
+                };
+              }
             }
-            return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getMonth() + 1}월 ${end.getDate()}일`;
-        };
-
-        const fetchData = async () => {
-            isLoading = true;
-            weather = null;
-            meal = null;
-            timetable = null;
-            render();
-
-            try {
-                let forecastForSelectedDay = null;
-                const locationForWeather = schoolInfo.cityDistrictName || schoolInfo.regionName;
-                if (locationForWeather) {
-                    const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${locationForWeather}&count=1&language=ko&format=json`);
-                    const geoData = await geoResponse.json();
-                    if (geoData.results && geoData.results.length > 0) {
-                        const { latitude, longitude } = geoData.results[0];
-                        const weatherResponse = await fetch(`${WEATHER_API_URL_FORECAST}?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=7`);
-                        const weatherData = await weatherResponse.json();
-                        if (weatherData.daily) {
-                            const selectedDateStr = formatDate(date);
-                            const dateIndex = weatherData.daily.time.findIndex(time => time.startsWith(selectedDateStr));
-                            if (dateIndex !== -1) {
-                                forecastForSelectedDay = {
-                                    temp_min: weatherData.daily.temperature_2m_min[dateIndex],
-                                    temp_max: weatherData.daily.temperature_2m_max[dateIndex],
-                                    weather_code: weatherData.daily.weather_code[dateIndex],
-                                    precipitation_probability: weatherData.daily.precipitation_probability_max[dateIndex]
-                                };
-                            }
-                        }
-                    }
-                }
-                weather = forecastForSelectedDay;
-
-                if (!isPublicHoliday(date) && !isWeekend(date)) {
-                    const neisFormattedDate = formatDateForNeis(date);
-                    const mealResponse = await fetch(`${NEIS_API_URL}mealServiceDietInfo?key=${NEIS_API_KEY}&type=json&pSize=100&ATPT_OFCDC_SC_CODE=${schoolInfo.regionCode}&SD_SCHUL_CODE=${schoolInfo.code}&MLSV_YMD=${neisFormattedDate}`);
-                    const mealData = await mealResponse.json();
-                    meal = mealData.mealServiceDietInfo?.[1]?.row || null;
-
-                    const dayOfWeek = getDayName(date);
-                    if (customTimetable[dayOfWeek] && customTimetable[dayOfWeek].some(item => item)) {
-                        timetable = customTimetable[dayOfWeek].map((subject, index) => ({
-                            PERIO: index + 1,
-                            ITRT_CNTNT: subject
-                        }));
-                    } else {
-                        const timetableEndpoint = getTimetableEndpoint(schoolInfo.schoolType);
-                        const timetableResponse = await fetch(`${NEIS_API_URL}${timetableEndpoint}?key=${NEIS_API_KEY}&type=json&pSize=100&ATPT_OFCDC_SC_CODE=${schoolInfo.regionCode}&SD_SCHUL_CODE=${schoolInfo.code}&AY=${date.getFullYear()}&SEM=${getSemester(date)}&ALL_TI_YMD=${neisFormattedDate}&GRADE=${schoolInfo.grade}&CLASS_NM=${schoolInfo.class}`);
-                        const timetableData = await timetableResponse.json();
-                        timetable = timetableData[timetableEndpoint]?.[1]?.row || null;
-                    }
-                }
-            } catch (error) {
-                console.error('API 데이터 로딩 중 오류 발생:', error);
-                weather = null;
-                meal = null;
-                timetable = null;
-            } finally {
-                isLoading = false;
-                render();
-            }
-        };
-
-        const handleDateChange = (days) => {
-            date.setDate(date.getDate() + days);
-            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
-            else render();
-        };
-
-        const goToToday = () => {
-            date = new Date();
-            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
-            else render();
-        };
-
-        const handleWeekChange = (weeks) => {
-            selectedNoteDate.setDate(selectedNoteDate.getDate() + (weeks * 7));
-            selectedNoteDate = getNearestWeekday(selectedNoteDate);
-            render();
-        };
-
-        const handleWeekDateSelect = (dateString) => {
-            const [year, month, day] = dateString.split('-').map(Number);
-            selectedNoteDate = new Date(year, month - 1, day);
-            render();
-        };
-
-        const handleSaveNote = () => {
-            const textarea = document.getElementById('daily-note-textarea');
-            if (!textarea) return;
-            const value = textarea.value.trim();
-            const dateKey = getSelectedNoteDateKey();
-            if (value) dailyNotes[dateKey] = value;
-            else delete dailyNotes[dateKey];
-            saveDailyNotes();
-            render();
-        };
-
-        const handleDeleteNote = () => {
-            const dateKey = getSelectedNoteDateKey();
-            delete dailyNotes[dateKey];
-            saveDailyNotes();
-            render();
-        };
-
-        const handleSchoolSearch = async () => {
-            if (!searchQuery) return;
-            try {
-                const response = await fetch(`${NEIS_API_URL}schoolInfo?key=${NEIS_API_KEY}&type=json&pSize=100&SCHUL_NM=${searchQuery}`);
-                const data = await response.json();
-                searchResults = (data.schoolInfo?.[1]?.row || []).map(school => ({
-                    SCHUL_NM: school.SCHUL_NM,
-                    SD_SCHUL_CODE: school.SD_SCHUL_CODE,
-                    ATPT_OFCDC_SC_CODE: school.ATPT_OFCDC_SC_CODE,
-                    LCTN_SC_NM: school.LCTN_SC_NM,
-                    SIGUN_NM: school.SIGUN_NM || school.LCTN_SC_NM,
-                    SCHUL_KND_SC_NM: school.SCHUL_KND_SC_NM || ''
-                }));
-            } catch (error) {
-                console.error('학교 검색 중 오류 발생:', error);
-                searchResults = [];
-            }
-            render();
-        };
-
-        const saveSettings = () => {
-            localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
-            localStorage.setItem('customTimetable', JSON.stringify(customTimetable));
-            saveCardVisibility();
-            view = 'main';
-            if (schoolInfo.code && schoolInfo.regionCode) fetchData();
-            else render();
-        };
-
-        const getCombinedText = () => {
-            const formattedDate = getFormattedDateWithDay(date);
-            const currentNote = getNoteForDate(getCurrentDateKey());
-
-            let weatherSummary = '정보 없음';
-            if (weather && weather.weather_code !== undefined) {
-                const weatherText = getWeatherDescription(weather.weather_code);
-                const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
-                weatherSummary = weatherText
-                    ? `${tempDisplay} ${weatherText}${weather.precipitation_probability > 0 ? ` (${weather.precipitation_probability}%)` : ''}`
-                    : tempDisplay;
-            }
-
-            const dateText = `${formattedDate} 날씨: ${weatherSummary}`;
-            const mealText = `급식메뉴: ${meal && meal.length > 0 ? meal[0].DDISH_NM.split('<br/>').map(item => item.replace(/\((.*?)\)/g, '').trim()).join(', ') : '정보 없음'}`;
-            const timetableText = `시간표: ${timetable && timetable.length > 0 ? timetable.filter(item => item.ITRT_CNTNT).map(item => item.ITRT_CNTNT).join(' ') : '정보 없음'}`;
-            const noteText = currentNote ? `\n${currentNote}` : '';
-            return `${dateText}\n\n${mealText}\n\n${timetableText}${noteText}`;
-        };
-
-        const handleCopy = async () => {
-            const combinedText = getCombinedText();
-            try {
-                if (navigator.clipboard && window.isSecureContext) {
-                    await navigator.clipboard.writeText(combinedText);
-                } else {
-                    const tempElement = document.createElement('textarea');
-                    tempElement.value = combinedText;
-                    document.body.appendChild(tempElement);
-                    tempElement.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(tempElement);
-                }
-            } catch (error) {
-                console.error('복사 실패:', error);
-            }
-        };
-
-        const handleShare = () => {
-            if (navigator.share) {
-                navigator.share({
-                    title: `${schoolInfo.name} ${schoolInfo.grade}학년 ${schoolInfo.class}반 정보`,
-                    text: getCombinedText(),
-                }).catch((error) => console.log('공유 실패', error));
-            }
-        };
-
-        const render = () => {
-            if (view === 'main') {
-                mainViewContainer.classList.remove('hidden');
-                settingsViewContainer.classList.add('hidden');
-                renderMainView();
-            } else {
-                mainViewContainer.classList.add('hidden');
-                settingsViewContainer.classList.remove('hidden');
-                renderSettingsView();
-            }
-            addEventListeners();
-        };
-
-        const renderMainView = () => {
-            const isSchoolSet = schoolInfo.code && schoolInfo.regionCode;
-            const todayIsWeekend = isWeekend(date);
-            const holidayName = isPublicHoliday(date);
-            const isHoliday = !!holidayName;
-            const isRegularWorkingDay = !todayIsWeekend && !isHoliday;
-            const hasData = isRegularWorkingDay && (meal || timetable);
-            const weekDates = getWeekDates(selectedNoteDate).filter(weekDate => !isWeekend(weekDate));
-            const selectedNoteDateKey = getSelectedNoteDateKey();
-            const currentNote = getNoteForDate(selectedNoteDateKey);
-
-            let content = `
+          }
+        }
+        weather = forecastForSelectedDay;
+        if (!isPublicHoliday(date) && !isWeekend(date)) {
+          const neisFormattedDate = formatDateForNeis(date);
+          const mealResponse = await fetch(`${NEIS_API_URL}mealServiceDietInfo?key=${NEIS_API_KEY}&type=json&pSize=100&ATPT_OFCDC_SC_CODE=${schoolInfo.regionCode}&SD_SCHUL_CODE=${schoolInfo.code}&MLSV_YMD=${neisFormattedDate}`);
+          const mealData = await mealResponse.json();
+          meal = mealData.mealServiceDietInfo?.[1]?.row || null;
+          const dayOfWeek = getDayName(date);
+          if (customTimetable[dayOfWeek] && customTimetable[dayOfWeek].some(item => item)) {
+            timetable = customTimetable[dayOfWeek].map((subject, index) => ({
+              PERIO: index + 1,
+              ITRT_CNTNT: subject
+            }));
+          } else {
+            const timetableEndpoint = getTimetableEndpoint(schoolInfo.schoolType);
+            const timetableResponse = await fetch(`${NEIS_API_URL}${timetableEndpoint}?key=${NEIS_API_KEY}&type=json&pSize=100&ATPT_OFCDC_SC_CODE=${schoolInfo.regionCode}&SD_SCHUL_CODE=${schoolInfo.code}&AY=${date.getFullYear()}&SEM=${getSemester(date)}&ALL_TI_YMD=${neisFormattedDate}&GRADE=${schoolInfo.grade}&CLASS_NM=${schoolInfo.class}`);
+            const timetableData = await timetableResponse.json();
+            timetable = timetableData[timetableEndpoint]?.[1]?.row || null;
+          }
+        }
+      } catch (error) {
+        console.error('API 데이터 로딩 중 오류 발생:', error);
+        weather = null;
+        meal = null;
+        timetable = null;
+      } finally {
+        isLoading = false;
+        render();
+      }
+    };
+    const handleDateChange = (days) => {
+      date.setDate(date.getDate() + days);
+      if (schoolInfo.code && schoolInfo.regionCode) fetchData();
+      else render();
+    };
+    const goToToday = () => {
+      date = new Date();
+      if (schoolInfo.code && schoolInfo.regionCode) fetchData();
+      else render();
+    };
+    const handleWeekChange = (weeks) => {
+      selectedNoteDate.setDate(selectedNoteDate.getDate() + (weeks * 7));
+      selectedNoteDate = getNearestWeekday(selectedNoteDate);
+      render();
+    };
+    const handleWeekDateSelect = (dateString) => {
+      const [year, month, day] = dateString.split('-').map(Number);
+      selectedNoteDate = new Date(year, month - 1, day);
+      render();
+    };
+    const handleSaveNote = () => {
+      const textarea = document.getElementById('daily-note-textarea');
+      if (!textarea) return;
+      const value = textarea.value.trim();
+      const dateKey = getSelectedNoteDateKey();
+      if (value) dailyNotes[dateKey] = value;
+      else delete dailyNotes[dateKey];
+      saveDailyNotes();
+      render();
+    };
+    const handleDeleteNote = () => {
+      const dateKey = getSelectedNoteDateKey();
+      delete dailyNotes[dateKey];
+      saveDailyNotes();
+      render();
+    };
+    const handleSchoolSearch = async () => {
+      if (!searchQuery) return;
+      try {
+        const response = await fetch(`${NEIS_API_URL}schoolInfo?key=${NEIS_API_KEY}&type=json&pSize=100&SCHUL_NM=${searchQuery}`);
+        const data = await response.json();
+        searchResults = (data.schoolInfo?.[1]?.row || []).map(school => ({
+          SCHUL_NM: school.SCHUL_NM,
+          SD_SCHUL_CODE: school.SD_SCHUL_CODE,
+          ATPT_OFCDC_SC_CODE: school.ATPT_OFCDC_SC_CODE,
+          LCTN_SC_NM: school.LCTN_SC_NM,
+          SIGUN_NM: school.SIGUN_NM || school.LCTN_SC_NM,
+          SCHUL_KND_SC_NM: school.SCHUL_KND_SC_NM || ''
+        }));
+      } catch (error) {
+        console.error('학교 검색 중 오류 발생:', error);
+        searchResults = [];
+      }
+      render();
+    };
+    const saveSettings = () => {
+      localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
+      localStorage.setItem('customTimetable', JSON.stringify(customTimetable));
+      saveCardVisibility();
+      view = 'main';
+      if (schoolInfo.code && schoolInfo.regionCode) fetchData();
+      else render();
+    };
+    const getCombinedText = () => {
+      const formattedDate = getFormattedDateWithDay(date);
+      const currentNote = getNoteForDate(getCurrentDateKey());
+      let weatherSummary = '정보 없음';
+      if (weather && weather.weather_code !== undefined) {
+        const weatherText = getWeatherDescription(weather.weather_code);
+        const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
+        weatherSummary = weatherText ?
+          `${tempDisplay} ${weatherText}${weather.precipitation_probability > 0 ? ` (${weather.precipitation_probability}%)` : ''}` :
+          tempDisplay;
+      }
+      const dateText = `${formattedDate} 날씨: ${weatherSummary}`;
+      const mealText = `급식메뉴: ${meal && meal.length > 0 ? meal[0].DDISH_NM.split('<br/>').map(item => item.replace(/\((.*?)\)/g, '').trim()).join(', ') : '정보 없음'}`;
+      const timetableText = `시간표: ${timetable && timetable.length > 0 ? timetable.filter(item => item.ITRT_CNTNT).map(item => item.ITRT_CNTNT).join(' ') : '정보 없음'}`;
+      const noteText = currentNote ? `\n${currentNote}` : '';
+      return `${dateText}\n\n${mealText}\n\n${timetableText}${noteText}`;
+    };
+    const handleCopy = async () => {
+      const combinedText = getCombinedText();
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(combinedText);
+        } else {
+          const tempElement = document.createElement('textarea');
+          tempElement.value = combinedText;
+          document.body.appendChild(tempElement);
+          tempElement.select();
+          document.execCommand('copy');
+          document.body.removeChild(tempElement);
+        }
+      } catch (error) {
+        console.error('복사 실패:', error);
+      }
+    };
+    const handleShare = () => {
+      if (navigator.share) {
+        navigator.share({
+          title: `${schoolInfo.name} ${schoolInfo.grade}학년 ${schoolInfo.class}반 정보`,
+          text: getCombinedText(),
+        }).catch((error) => console.log('공유 실패', error));
+      }
+    };
+    const render = () => {
+      if (view === 'main') {
+        mainViewContainer.classList.remove('hidden');
+        settingsViewContainer.classList.add('hidden');
+        renderMainView();
+      } else {
+        mainViewContainer.classList.add('hidden');
+        settingsViewContainer.classList.remove('hidden');
+        renderSettingsView();
+      }
+      addEventListeners();
+    };
+    const renderMainView = () => {
+      const isSchoolSet = schoolInfo.code && schoolInfo.regionCode;
+      const todayIsWeekend = isWeekend(date);
+      const holidayName = isPublicHoliday(date);
+      const isHoliday = !!holidayName;
+      const isRegularWorkingDay = !todayIsWeekend && !isHoliday;
+      const hasData = isRegularWorkingDay && (meal || timetable);
+      const weekDates = getWeekDates(selectedNoteDate).filter(weekDate => !isWeekend(weekDate));
+      const selectedNoteDateKey = getSelectedNoteDateKey();
+      const currentNote = getNoteForDate(selectedNoteDateKey);
+      let content = `
                 <div class="min-h-screen p-4 flex flex-col items-center">
                     <header class="w-full max-w-lg mb-6 pt-12 relative">
                         <div class="flex justify-between items-center mb-2">
@@ -452,9 +612,8 @@
                         </p>
                     </header>
             `;
-
-            if (isSchoolSet) {
-                content += `
+      if (isSchoolSet) {
+        content += `
                     <div class="w-full max-w-lg flex justify-between items-center p-4 mb-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                         <button id="prev-date-btn" class="text-lg text-gray-600 dark:text-gray-300 focus:outline-none">&lt;</button>
                         <div class="flex flex-col items-center">
@@ -467,30 +626,27 @@
                         <button id="next-date-btn" class="text-lg text-gray-600 dark:text-gray-300 focus:outline-none">&gt;</button>
                     </div>
                 `;
-
-                if (isLoading) {
-                    content += `<div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md flex justify-center items-center h-40"><p class="text-lg text-blue-500 dark:text-blue-400">정보 로딩 중...</p></div>`;
-                } else {
-                    if (todayIsWeekend || isHoliday) {
-                        content += `
+        if (isLoading) {
+          content += `<div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md flex justify-center items-center h-40"><p class="text-lg text-blue-500 dark:text-blue-400">정보 로딩 중...</p></div>`;
+        } else {
+          if (todayIsWeekend || isHoliday) {
+            content += `
                             <div class="w-full max-w-lg p-8 mb-6 rounded-2xl shadow-xl border-4 ${isHoliday ? 'bg-red-100 dark:bg-red-900 border-red-500 dark:border-red-400' : 'bg-blue-100 dark:bg-blue-900 border-blue-500 dark:border-blue-400'}">
                                 <h2 class="text-3xl font-bold text-center">${isHoliday ? `공휴일 (${holidayName})` : '휴일 (토/일요일)'}</h2>
                                 ${!isHoliday ? `<p class="text-center text-blue-500 dark:text-blue-300 mt-2">(시간표와 급식 정보는 제공되지 않습니다)</p>` : ''}
                             </div>
                         `;
-                    }
-
-                    if (isRegularWorkingDay && !hasData) {
-                        content += `
+          }
+          if (isRegularWorkingDay && !hasData) {
+            content += `
                             <div class="w-full max-w-lg p-8 mb-6 rounded-2xl bg-yellow-100 dark:bg-yellow-900 shadow-xl border-4 border-yellow-500 dark:border-yellow-400">
                                 <h2 class="text-3xl font-bold text-center text-yellow-700 dark:text-yellow-200">정보 없음</h2>
                                 <p class="text-center text-yellow-500 dark:text-yellow-300 mt-2">(선택된 날짜의 시간표/급식 정보가 없습니다. 변동 공휴일이나 휴교일일 수 있습니다.)</p>
                             </div>
                         `;
-                    }
-
-                    if (cardVisibility.summary && isRegularWorkingDay && hasData) {
-                        content += `
+          }
+          if (cardVisibility.summary && isRegularWorkingDay && hasData) {
+            content += `
                             <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                 <h2 class="text-lg font-semibold mb-2">${schoolInfo.grade}학년 ${schoolInfo.class}반</h2>
                                 <div class="whitespace-pre-line text-base mb-4">${getCombinedText()}</div>
@@ -499,43 +655,37 @@
                                     <button id="share-btn" class="px-4 py-2 rounded-2xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition-colors duration-200">공유하기</button>
                                 </div>
                             </div>`;
-                    }
-
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    let weatherContent;
-
-                    if (date < today) {
-                        weatherContent = `<p class="text-gray-500 dark:text-gray-400">과거 날씨 정보는 제공하지 않습니다.</p>`;
-                    } else if (weather && weather.weather_code !== undefined) {
-                        const weatherText = getWeatherDescription(weather.weather_code);
-                        const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
-                        const locationDisplay = schoolInfo.cityDistrictName ? ` (${schoolInfo.cityDistrictName})` : '';
-                        weatherContent = weatherText
-                            ? `<div class="flex items-center space-x-4"><p class="text-xl font-bold">${tempDisplay}<span class="ml-2 text-base text-gray-700 dark:text-gray-200">${weatherText}</span>${weather.precipitation_probability > 0 ? `<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">(${weather.precipitation_probability}%)</span>` : ''}<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span></p></div>`
-                            : `<div class="flex items-center space-x-4"><p class="text-xl font-bold">${tempDisplay}<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span></p></div>`;
-                    } else {
-                        weatherContent = `<p class="text-gray-500 dark:text-gray-400">날씨 정보를 불러올 수 없습니다. (7일치 예보만 제공)</p>`;
-                    }
-
-                    if (cardVisibility.weather) {
-                        content += `
+          }
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          let weatherContent;
+          if (date < today) {
+            weatherContent = `<p class="text-gray-500 dark:text-gray-400">과거 날씨 정보는 제공하지 않습니다.</p>`;
+          } else if (weather && weather.weather_code !== undefined) {
+            const weatherText = getWeatherDescription(weather.weather_code);
+            const tempDisplay = `${Math.round(weather.temp_max)}°/${Math.round(weather.temp_min)}°`;
+            const locationDisplay = schoolInfo.cityDistrictName ? ` (${schoolInfo.cityDistrictName})` : '';
+            weatherContent = weatherText ?
+              `<div class="flex items-center space-x-4"><p class="text-xl font-bold">${tempDisplay}<span class="ml-2 text-base text-gray-700 dark:text-gray-200">${weatherText}</span>${weather.precipitation_probability > 0 ? `<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">(${weather.precipitation_probability}%)</span>` : ''}<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span></p></div>` :
+              `<div class="flex items-center space-x-4"><p class="text-xl font-bold">${tempDisplay}<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">${locationDisplay}</span></p></div>`;
+          } else {
+            weatherContent = `<p class="text-gray-500 dark:text-gray-400">날씨 정보를 불러올 수 없습니다. (7일치 예보만 제공)</p>`;
+          }
+          if (cardVisibility.weather) {
+            content += `
                             <div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                 <h2 class="text-lg font-semibold mb-2">날씨</h2>
                                 ${weatherContent}
                             </div>`;
-                    }
-
-                    if (isRegularWorkingDay) {
-                        const timetableExists = cardVisibility.timetable && timetable && timetable.length > 0;
-                        const mealExists = cardVisibility.meal && meal && meal.length > 0;
-
-                        if (timetableExists || mealExists) {
-                            content += `<div class="w-full max-w-lg flex flex-wrap gap-4 mb-4">`;
-                            const cardWidthClass = (timetableExists && mealExists) ? 'w-full md:w-[calc(50%-0.5rem)]' : 'w-full';
-
-                            if (timetableExists) {
-                                content += `
+          }
+          if (isRegularWorkingDay) {
+            const timetableExists = cardVisibility.timetable && timetable && timetable.length > 0;
+            const mealExists = cardVisibility.meal && meal && meal.length > 0;
+            if (timetableExists || mealExists) {
+              content += `<div class="w-full max-w-lg flex flex-wrap gap-4 mb-4">`;
+              const cardWidthClass = (timetableExists && mealExists) ? 'w-full md:w-[calc(50%-0.5rem)]' : 'w-full';
+              if (timetableExists) {
+                content += `
                                     <div class="${cardWidthClass} p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                         <h2 class="text-lg font-semibold mb-2">시간표</h2>
                                         <ul class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -546,10 +696,9 @@
                                             `).join('')}
                                         </ul>
                                     </div>`;
-                            }
-
-                            if (mealExists) {
-                                content += `
+              }
+              if (mealExists) {
+                content += `
                                     <div class="${cardWidthClass} p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-md">
                                         <h2 class="text-lg font-semibold mb-2">급식표</h2>
                                         <ul class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -558,14 +707,12 @@
                                             `).join('')}
                                         </ul>
                                     </div>`;
-                            }
-
-                            content += `</div>`;
-                        }
-                    }
-
-                    if (cardVisibility.notes) {
-                        content += `
+              }
+              content += `</div>`;
+            }
+          }
+          if (cardVisibility.notes) {
+            content += `
                             <div class="w-full max-w-lg p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md mt-2">
                                 <div class="flex justify-between items-center gap-2 mb-4">
                                     <button id="prev-week-btn" class="px-4 py-2 rounded-2xl bg-gray-200 dark:bg-gray-700 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">이전 주</button>
@@ -603,25 +750,23 @@
                                     </div>
                                 </div>
                             </div>`;
-                    }
-                }
-            } else {
-                content += `<div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md flex justify-center items-center h-48"><p class="text-lg text-gray-500 dark:text-gray-400 text-center">설정에서 정보를 입력해주세요.</p></div>`;
-            }
-
-            content += `</div>`;
-            mainViewContainer.innerHTML = content;
-        };
-
-        const renderSettingsView = () => {
-            const getTimetableRows = () => {
-                const maxPeriod = Math.max(8, ...Object.values(customTimetable).map(day => day ? day.length : 0).filter(len => len > 0), 0);
-                return Array.from({ length: maxPeriod }, (_, i) => i + 1);
-            };
-
-            const gradeOptions = getGradeOptions(schoolInfo.schoolType);
-
-            settingsViewContainer.innerHTML = `
+          }
+        }
+      } else {
+        content += `<div class="w-full max-w-lg p-6 mb-4 rounded-2xl bg-white dark:bg-gray-800 shadow-md flex justify-center items-center h-48"><p class="text-lg text-gray-500 dark:text-gray-400 text-center">설정에서 정보를 입력해주세요.</p></div>`;
+      }
+      content += `</div>`;
+      mainViewContainer.innerHTML = content;
+    };
+    const renderSettingsView = () => {
+      const getTimetableRows = () => {
+        const maxPeriod = Math.max(8, ...Object.values(customTimetable).map(day => day ? day.length : 0).filter(len => len > 0), 0);
+        return Array.from({
+          length: maxPeriod
+        }, (_, i) => i + 1);
+      };
+      const gradeOptions = getGradeOptions(schoolInfo.schoolType);
+      settingsViewContainer.innerHTML = `
                 <div class="min-h-screen p-4 flex flex-col items-center">
                     <div class="w-full max-w-4xl p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-lg relative">
                         <h1 class="text-2xl font-bold mb-6">학교 설정 및 시간표 편집</h1>
@@ -697,10 +842,10 @@
                                 <p class="text-sm text-gray-500 dark:text-gray-400">* 학교 정보는 나이스 교육정보 개방포털에서 제공됩니다.</p>
                             </div>
                             <div class="w-full md:w-2/3">
-                                <h3 class="text-lg font-semibold mb-4">시간표 직접 입력</h3>
-                                <p class="text-xs text-gray-500 dark:text-gray-400">미입력시 나이스 교육정보 개방포털에서 제공하는 정보를 자동으로 불러와요.</p>
+                                <h2 class="text-lg font-semibold mb-1/2">시간표 직접 입력</h3>
+                               <h1 class="whitespace-nowrap mb-1 ml-1/2 text-xs text-gray-500 dark:text-gray-400" >  미입력시 나이스 교육정보 개방포털에서 제공하는 정보를 자동으로 불러와요.</h1>
                                 <div class="overflow-x-auto">
-                                    <table class="min-w-full table-auto">
+                                    <table class="mt-2 min-w-full table-auto">
                                         <thead>
                                             <tr class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
                                                 <th class="px-2 py-2 text-center">교시</th>
@@ -730,86 +875,113 @@
                     </div>
                 </div>
             `;
-        };
-
-        const addEventListeners = () => {
-            if (view === 'main') {
-                document.getElementById('settings-btn')?.addEventListener('click', () => { view = 'settings'; render(); });
-                document.getElementById('prev-date-btn')?.addEventListener('click', () => handleDateChange(-1));
-                document.getElementById('next-date-btn')?.addEventListener('click', () => handleDateChange(1));
-                document.getElementById('today-btn')?.addEventListener('click', goToToday);
-                document.getElementById('copy-btn')?.addEventListener('click', handleCopy);
-                document.getElementById('share-btn')?.addEventListener('click', handleShare);
-                document.getElementById('prev-week-btn')?.addEventListener('click', () => handleWeekChange(-1));
-                document.getElementById('next-week-btn')?.addEventListener('click', () => handleWeekChange(1));
-                document.querySelectorAll('.week-date-btn').forEach(button => {
-                    button.addEventListener('click', (e) => handleWeekDateSelect(e.currentTarget.dataset.weekDate));
-                });
-                document.getElementById('save-note-btn')?.addEventListener('click', handleSaveNote);
-                document.getElementById('delete-note-btn')?.addEventListener('click', handleDeleteNote);
-            } else {
-                document.getElementById('school-search-input')?.addEventListener('input', (e) => { searchQuery = e.target.value; });
-                document.getElementById('school-search-btn')?.addEventListener('click', handleSchoolSearch);
-                document.getElementById('search-results-list')?.addEventListener('click', (e) => {
-                    if (e.target.tagName === 'LI') {
-                        const newSchoolType = e.target.dataset.schoolType || '';
-                        const allowedGrades = getGradeOptions(newSchoolType).map(String);
-                        schoolInfo = {
-                            ...schoolInfo,
-                            name: e.target.dataset.name,
-                            code: e.target.dataset.code,
-                            regionCode: e.target.dataset.regionCode,
-                            regionName: e.target.dataset.regionName,
-                            cityDistrictName: e.target.dataset.cityDistrictName,
-                            schoolType: newSchoolType,
-                            grade: allowedGrades.includes(String(schoolInfo.grade)) ? schoolInfo.grade : '',
-                        };
-                        searchResults = [];
-                        render();
-                    }
-                });
-                document.getElementById('grade-select')?.addEventListener('change', (e) => { schoolInfo.grade = e.target.value; });
-                document.getElementById('class-select')?.addEventListener('change', (e) => { schoolInfo.class = e.target.value; });
-                document.getElementById('toggle-summary-card')?.addEventListener('change', (e) => { cardVisibility.summary = e.target.checked; saveCardVisibility(); });
-                document.getElementById('toggle-weather-card')?.addEventListener('change', (e) => { cardVisibility.weather = e.target.checked; saveCardVisibility(); });
-                document.getElementById('toggle-timetable-card')?.addEventListener('change', (e) => { cardVisibility.timetable = e.target.checked; saveCardVisibility(); });
-                document.getElementById('toggle-meal-card')?.addEventListener('change', (e) => { cardVisibility.meal = e.target.checked; saveCardVisibility(); });
-                document.getElementById('toggle-notes-card')?.addEventListener('change', (e) => { cardVisibility.notes = e.target.checked; saveCardVisibility(); });
-                document.querySelectorAll('.timetable-input').forEach(input => {
-                    input.addEventListener('input', (e) => {
-                        const { day, period } = e.target.dataset;
-                        const value = e.target.value;
-                        if (!customTimetable[day]) customTimetable[day] = [];
-                        while (customTimetable[day].length < period) customTimetable[day].push('');
-                        customTimetable[day][period - 1] = value;
-                    });
-                });
-                document.getElementById('cancel-settings-btn')?.addEventListener('click', () => { view = 'main'; render(); });
-                document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
-            }
-        };
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedSchoolInfo = localStorage.getItem('schoolInfo');
-            if (savedSchoolInfo) schoolInfo = JSON.parse(savedSchoolInfo);
-
-            const savedTimetable = localStorage.getItem('customTimetable');
-            if (savedTimetable) customTimetable = JSON.parse(savedTimetable);
-
-            const savedDailyNotes = localStorage.getItem('dailyNotes');
-            if (savedDailyNotes) dailyNotes = JSON.parse(savedDailyNotes);
-
-            const savedCardVisibility = localStorage.getItem('cardVisibility');
-            if (savedCardVisibility) cardVisibility = { ...cardVisibility, ...JSON.parse(savedCardVisibility) };
-
-            selectedNoteDate = getNearestWeekday(new Date());
-
-            if (schoolInfo.code && schoolInfo.regionCode) {
-                fetchData();
-            } else {
-                render();
-            }
+    };
+    const addEventListeners = () => {
+      if (view === 'main') {
+        document.getElementById('settings-btn')?.addEventListener('click', () => {
+          view = 'settings';
+          render();
         });
-    </script>
+        document.getElementById('prev-date-btn')?.addEventListener('click', () => handleDateChange(-1));
+        document.getElementById('next-date-btn')?.addEventListener('click', () => handleDateChange(1));
+        document.getElementById('today-btn')?.addEventListener('click', goToToday);
+        document.getElementById('copy-btn')?.addEventListener('click', handleCopy);
+        document.getElementById('share-btn')?.addEventListener('click', handleShare);
+        document.getElementById('prev-week-btn')?.addEventListener('click', () => handleWeekChange(-1));
+        document.getElementById('next-week-btn')?.addEventListener('click', () => handleWeekChange(1));
+        document.querySelectorAll('.week-date-btn').forEach(button => {
+          button.addEventListener('click', (e) => handleWeekDateSelect(e.currentTarget.dataset.weekDate));
+        });
+        document.getElementById('save-note-btn')?.addEventListener('click', handleSaveNote);
+        document.getElementById('delete-note-btn')?.addEventListener('click', handleDeleteNote);
+      } else {
+        document.getElementById('school-search-input')?.addEventListener('input', (e) => {
+          searchQuery = e.target.value;
+        });
+        document.getElementById('school-search-btn')?.addEventListener('click', handleSchoolSearch);
+        document.getElementById('search-results-list')?.addEventListener('click', (e) => {
+          if (e.target.tagName === 'LI') {
+            const newSchoolType = e.target.dataset.schoolType || '';
+            const allowedGrades = getGradeOptions(newSchoolType).map(String);
+            schoolInfo = {
+              ...schoolInfo,
+              name: e.target.dataset.name,
+              code: e.target.dataset.code,
+              regionCode: e.target.dataset.regionCode,
+              regionName: e.target.dataset.regionName,
+              cityDistrictName: e.target.dataset.cityDistrictName,
+              schoolType: newSchoolType,
+              grade: allowedGrades.includes(String(schoolInfo.grade)) ? schoolInfo.grade : '',
+            };
+            searchResults = [];
+            render();
+          }
+        });
+        document.getElementById('grade-select')?.addEventListener('change', (e) => {
+          schoolInfo.grade = e.target.value;
+        });
+        document.getElementById('class-select')?.addEventListener('change', (e) => {
+          schoolInfo.class = e.target.value;
+        });
+        document.getElementById('toggle-summary-card')?.addEventListener('change', (e) => {
+          cardVisibility.summary = e.target.checked;
+          saveCardVisibility();
+        });
+        document.getElementById('toggle-weather-card')?.addEventListener('change', (e) => {
+          cardVisibility.weather = e.target.checked;
+          saveCardVisibility();
+        });
+        document.getElementById('toggle-timetable-card')?.addEventListener('change', (e) => {
+          cardVisibility.timetable = e.target.checked;
+          saveCardVisibility();
+        });
+        document.getElementById('toggle-meal-card')?.addEventListener('change', (e) => {
+          cardVisibility.meal = e.target.checked;
+          saveCardVisibility();
+        });
+        document.getElementById('toggle-notes-card')?.addEventListener('change', (e) => {
+          cardVisibility.notes = e.target.checked;
+          saveCardVisibility();
+        });
+        document.querySelectorAll('.timetable-input').forEach(input => {
+          input.addEventListener('input', (e) => {
+            const {
+              day,
+              period
+            } = e.target.dataset;
+            const value = e.target.value;
+            if (!customTimetable[day]) customTimetable[day] = [];
+            while (customTimetable[day].length < period) customTimetable[day].push('');
+            customTimetable[day][period - 1] = value;
+          });
+        });
+        document.getElementById('cancel-settings-btn')?.addEventListener('click', () => {
+          view = 'main';
+          render();
+        });
+        document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
+      }
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedSchoolInfo = localStorage.getItem('schoolInfo');
+      if (savedSchoolInfo) schoolInfo = JSON.parse(savedSchoolInfo);
+      const savedTimetable = localStorage.getItem('customTimetable');
+      if (savedTimetable) customTimetable = JSON.parse(savedTimetable);
+      const savedDailyNotes = localStorage.getItem('dailyNotes');
+      if (savedDailyNotes) dailyNotes = JSON.parse(savedDailyNotes);
+      const savedCardVisibility = localStorage.getItem('cardVisibility');
+      if (savedCardVisibility) cardVisibility = {
+        ...cardVisibility,
+        ...JSON.parse(savedCardVisibility)
+      };
+      selectedNoteDate = getNearestWeekday(new Date());
+      if (schoolInfo.code && schoolInfo.regionCode) {
+        fetchData();
+      } else {
+        render();
+      }
+    });
+  </script>
 </body>
+
 </html>
